@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- 影·筛 核心引擎：扫描 / 解码 / 缩略图缓存 / 索引 / 复制删除 / 撤销。
+       与 UI 完全解耦，命令行自检与基准测试直接调用本程序集。 -->
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <AssemblyName>YingShai.Core</AssemblyName>
+    <RootNamespace>YingShai.Core</RootNamespace>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.11" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- LibRaw 原生库（LGPL-2.1 / CDDL-1.0，vcpkg 预编译，见 native/libraw/LICENSE*）
+         必须和 exe 同目录，Windows 的 DLL 搜索路径才会找到 raw_r.dll 的依赖（jpeg8/lcms2/zlib1） -->
+    <Content Include="..\..\native\libraw\**\*.dll" Link="%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>
