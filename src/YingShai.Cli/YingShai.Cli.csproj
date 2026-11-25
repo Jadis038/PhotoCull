@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- 开发期用的命令行壳：只为反复跑自检/基准测试，发布时用户拿到的是「影·筛.exe」（同样支持这些参数）。 -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <AssemblyName>YingShai.Cli</AssemblyName>
+    <RootNamespace>YingShai.Cli</RootNamespace>
+    <PlatformTarget>x64</PlatformTarget>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\YingShai.Core\YingShai.Core.csproj" />
+  </ItemGroup>
+
+</Project>
