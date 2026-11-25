@@ -121,6 +121,11 @@ public static class AppController
                 lines.Add($"缩略图就绪：{withThumb}/{_session?.TotalCount}");
                 lines.Add($"窗口大小：{win.ActualWidth:F0}×{win.ActualHeight:F0}");
 
+                // 先出"标记前"的截图
+                win.RenderToPng(outPng);
+                lines.Add($"已渲染（标记前）：{outPng}");
+                lines.Add($"布局：{win.LayoutDebug}");
+
                 if (args.Contains("--mark-demo") && _session != null && _vm != null)
                 {
                     // 标记演示：用于截图证明角标/灰调/计数
@@ -139,9 +144,6 @@ public static class AppController
                     lines.Add($"已渲染（带标记）：{markedPng}，已筛 {_session.MarkedCount}/{_session.TotalCount}");
                 }
 
-                win.RenderToPng(outPng);
-                lines.Add($"布局：{win.LayoutDebug}");
-                lines.Add($"已渲染：{outPng}");
                 if (vm.LargeImage == null) exitCode = 1;
             }
         }
