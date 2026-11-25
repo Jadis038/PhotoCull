@@ -1,0 +1,127 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<!--
+  影·筛 —— WiX v4 打包定义
+  · 每用户安装到 %LOCALAPPDATA%\Programs\影·筛，免 UAC（Scope=perUser → LUA 包）
+  · 包内所有 Id 用 ASCII（YingShai*），显示名一律中文「影·筛」
+  · 文件清单由 installer/make-files-wxs.ps1 生成（Files.wxs）
+  · 卸载只删程序与快捷方式/关联，绝不删用户图片、索引与缓存
+-->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+
+  <Package Name="影·筛"
+           Manufacturer="影·筛 开源项目"
+           Version="$(var.ProductVersion)"
+           UpgradeCode="{2F0C7B51-8A5E-4C33-9C1B-6E7D51B2A4C8}"
+           Language="2052"
+           Codepage="936"
+           Scope="perUser"
+           InstallerVersion="500"
+           Compressed="yes">
+
+    <SummaryInformation Description="影·筛 —— Windows 图片快速筛选工具" Manufacturer="影·筛 开源项目" />
+    <MediaTemplate EmbedCab="yes" />
+    <MajorUpgrade DowngradeErrorMessage="已安装更新版本的「影·筛」，请先在「应用和功能」里卸载。" />
+
+    <!-- ================= 目录树 ================= -->
+    <StandardDirectory Id="LocalAppDataFolder">
+      <Directory Id="ProgramsFolder" Name="Programs">
+        <Directory Id="YingShaiAppDir" Name="影·筛" />
+      </Directory>
+    </StandardDirectory>
+
+    <StandardDirectory Id="ProgramMenuFolder">
+      <Directory Id="YingShaiMenuDir" Name="影·筛" />
+    </StandardDirectory>
+
+    <!-- ================= 开始菜单快捷方式 ================= -->
+    <DirectoryRef Id="YingShaiMenuDir">
+      <Component Id="StartMenuShortcut" Guid="{AD7D6DE5-4EA6-4E6C-9EF1-5AFC1225889C}">
+        <Shortcut Id="AppStartMenuShortcut"
+                  Directory="YingShaiMenuDir"
+                  Name="影·筛"
+                  Description="影·筛 —— 图片快速筛选工具"
+                  Target="[YingShaiAppDir]影·筛.exe"
+                  WorkingDirectory="YingShaiAppDir" />
+        <RemoveFolder Id="RemoveYingShaiMenuDir" Directory="YingShaiMenuDir" On="uninstall" />
+        <RegistryValue Root="HKCU" Key="Software\YingShai" Name="StartMenuInstalled"
+                       Type="integer" Value="1" KeyPath="yes" />
+      </Component>
+    </DirectoryRef>
+
+    <!-- ================= 文件关联（HKCU，无需管理员） ================= -->
+    <DirectoryRef Id="YingShaiAppDir">
+      <!-- ProgID：显示名是中文「影·筛」，Id 用 ASCII -->
+      <Component Id="ProgIdComponent" Guid="{D735EDFD-2A21-459B-8C42-956D73A51F84}">
+        <RegistryValue Root="HKCU" Key="Software\Classes\YingShai.Image"
+                       Type="string" Value="影·筛 图片" KeyPath="yes" />
+        <RegistryValue Root="HKCU" Key="Software\Classes\YingShai.Image"
+                       Name="FriendlyTypeName" Type="string" Value="影·筛 图片" />
+        <RegistryValue Root="HKCU" Key="Software\Classes\YingShai.Image\DefaultIcon"
+                       Type="string" Value="[YingShaiAppDir]影·筛.exe,0" />
+        <RegistryValue Root="HKCU" Key="Software\Classes\YingShai.Image\shell\open\command"
+                       Type="string" Value="&quot;[YingShaiAppDir]影·筛.exe&quot; &quot;%1&quot;" />
+      </Component>
+
+      <!-- 「打开方式」里出现的应用条目 -->
+      <Component Id="ApplicationsComponent" Guid="{4B9A21C4-63F0-4E2B-8D71-2C5E9A0F3B17}">
+        <RegistryValue Root="HKCU" Key="Software\Classes\Applications\影·筛.exe"
+                       Name="FriendlyAppName" Type="string" Value="影·筛" KeyPath="yes" />
+        <RegistryValue Root="HKCU" Key="Software\Classes\Applications\影·筛.exe\shell\open\command"
+                       Type="string" Value="&quot;[YingShaiAppDir]影·筛.exe&quot; &quot;%1&quot;" />
+      </Component>
+
+      <!-- 每个支持格式的 OpenWithProgids：让「打开方式」里出现影·筛，但不抢占默认打开程序 -->
+      <Component Id="OpenWithComponent" Guid="{9E3C2A77-1F4B-4C58-A6E0-7D8B3F5C1A42}">
+        <RegistryValue Root="HKCU" Key="Software\YingShai" Name="OpenWithInstalled"
+                       Type="integer" Value="1" KeyPath="yes" />
+        <RegistryValue Root="HKCU" Key="Software\Classes\.nef\OpenWithProgids" Name="YingShai.Image" Type="string" Value="YingShai.Image" />
+        <RegistryValue Root="HKCU" Key="Software\Classes\.nrw\OpenWithProgids" Name="YingShai.Image" Type="string" Value="YingShai.Image" />
+        <RegistryValue Root="HKCU" Key="Software\Classes\.cr2\OpenWithProgids" Name="YingShai.Image" Type="string" Value="YingShai.Image" />
+        <RegistryValue Root="HKCU" Key="Software\Classes\.cr3\OpenWithProgids" Name="YingShai.Image" Type="string" Value="YingShai.Image" />
+        <RegistryValue Root="HKCU" Key="Software\Classes\.arw\OpenWithProgids" Name="YingShai.Image" Type="string" Value="YingShai.Image" />
+        <RegistryValue Root="HKCU" Key="Software\Classes\.raf\OpenWithProgids" Name="YingShai.Image" Type="string" Value="YingShai.Image" />
+        <RegistryValue Root="HKCU" Key="Software\Classes\.orf\OpenWithProgids" Name="YingShai.Image" Type="string" Value="YingShai.Image" />
+        <RegistryValue Root="HKCU" Key="Software\Classes\.rw2\OpenWithProgids" Name="YingShai.Image" Type="string" Value="YingShai.Image" />
+        <RegistryValue Root="HKCU" Key="Software\Classes\.pef\OpenWithProgids" Name="YingShai.Image" Type="string" Value="YingShai.Image" />
+        <RegistryValue Root="HKCU" Key="Software\Classes\.dng\OpenWithProgids" Name="YingShai.Image" Type="string" Value="YingShai.Image" />
+        <RegistryValue Root="HKCU" Key="Software\Classes\.srw\OpenWithProgids" Name="YingShai.Image" Type="string" Value="YingShai.Image" />
+        <RegistryValue Root="HKCU" Key="Software\Classes\.x3f\OpenWithProgids" Name="YingShai.Image" Type="string" Value="YingShai.Image" />
+        <RegistryValue Root="HKCU" Key="Software\Classes\.erf\OpenWithProgids" Name="YingShai.Image" Type="string" Value="YingShai.Image" />
+        <RegistryValue Root="HKCU" Key="Software\Classes\.mrw\OpenWithProgids" Name="YingShai.Image" Type="string" Value="YingShai.Image" />
+        <RegistryValue Root="HKCU" Key="Software\Classes\.mef\OpenWithProgids" Name="YingShai.Image" Type="string" Value="YingShai.Image" />
+        <RegistryValue Root="HKCU" Key="Software\Classes\.mos\OpenWithProgids" Name="YingShai.Image" Type="string" Value="YingShai.Image" />
+        <RegistryValue Root="HKCU" Key="Software\Classes\.dcr\OpenWithProgids" Name="YingShai.Image" Type="string" Value="YingShai.Image" />
+        <RegistryValue Root="HKCU" Key="Software\Classes\.3fr\OpenWithProgids" Name="YingShai.Image" Type="string" Value="YingShai.Image" />
+        <RegistryValue Root="HKCU" Key="Software\Classes\.fff\OpenWithProgids" Name="YingShai.Image" Type="string" Value="YingShai.Image" />
+        <RegistryValue Root="HKCU" Key="Software\Classes\.rwl\OpenWithProgids" Name="YingShai.Image" Type="string" Value="YingShai.Image" />
+        <RegistryValue Root="HKCU" Key="Software\Classes\.iiq\OpenWithProgids" Name="YingShai.Image" Type="string" Value="YingShai.Image" />
+        <RegistryValue Root="HKCU" Key="Software\Classes\.jpg\OpenWithProgids" Name="YingShai.Image" Type="string" Value="YingShai.Image" />
+        <RegistryValue Root="HKCU" Key="Software\Classes\.jpeg\OpenWithProgids" Name="YingShai.Image" Type="string" Value="YingShai.Image" />
+        <RegistryValue Root="HKCU" Key="Software\Classes\.png\OpenWithProgids" Name="YingShai.Image" Type="string" Value="YingShai.Image" />
+        <RegistryValue Root="HKCU" Key="Software\Classes\.tif\OpenWithProgids" Name="YingShai.Image" Type="string" Value="YingShai.Image" />
+        <RegistryValue Root="HKCU" Key="Software\Classes\.tiff\OpenWithProgids" Name="YingShai.Image" Type="string" Value="YingShai.Image" />
+        <RegistryValue Root="HKCU" Key="Software\Classes\.webp\OpenWithProgids" Name="YingShai.Image" Type="string" Value="YingShai.Image" />
+        <RegistryValue Root="HKCU" Key="Software\Classes\.heic\OpenWithProgids" Name="YingShai.Image" Type="string" Value="YingShai.Image" />
+        <RegistryValue Root="HKCU" Key="Software\Classes\.heif\OpenWithProgids" Name="YingShai.Image" Type="string" Value="YingShai.Image" />
+      </Component>
+
+      <!-- 卸载时删掉安装目录本身 -->
+      <Component Id="CleanupAppDir" Guid="{A36EAE59-9133-4CB8-BE12-BE99D1105112}">
+        <RegistryValue Root="HKCU" Key="Software\YingShai" Name="AppDir"
+                       Type="integer" Value="1" KeyPath="yes" />
+        <RemoveFolder Id="RemoveYingShaiAppDir" Directory="YingShaiAppDir" On="uninstall" />
+      </Component>
+    </DirectoryRef>
+
+    <!-- ================= 功能 ================= -->
+    <Feature Id="MainFeature" Title="影·筛" Level="1">
+      <ComponentGroupRef Id="AppFiles" />
+      <ComponentRef Id="ProgIdComponent" />
+      <ComponentRef Id="ApplicationsComponent" />
+      <ComponentRef Id="OpenWithComponent" />
+      <ComponentRef Id="StartMenuShortcut" />
+      <ComponentRef Id="CleanupAppDir" />
+    </Feature>
+
+  </Package>
+</Wix>
