@@ -1,4 +1,4 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using System.IO;
 using System.Text;
 using YingShai.Core.Imaging;
@@ -22,7 +22,8 @@ public sealed class Bench
     public int Run(string folder, string? csvPath = null, bool cold = false, bool warmAll = true)
     {
         var total = Stopwatch.StartNew();
-        string dbPath = Path.Combine(Path.GetTempPath(), "影筛bench_" + Guid.NewGuid().ToString("N")[..8], "index.db");
+        // 用真实索引库：磁盘缩略图缓存的索引必须持久，否则跨进程复用不到缓存（也是真实行为）
+        string dbPath = AppPaths.IndexDbPath;
         var store = new StateStore(dbPath);
         var settings = new AppSettings { MemoryCacheMb = 512, DecodeConcurrency = 4 };
         var session = new ViewerSession(settings, store)
@@ -155,7 +156,7 @@ public sealed class Bench
         {
             session.Dispose();
             store.Dispose();
-            try { Directory.Delete(Path.GetDirectoryName(dbPath)!, true); } catch { }
+            // 索引库是持久的（磁盘缩略图缓存索引在里面），不删
         }
     }
 
