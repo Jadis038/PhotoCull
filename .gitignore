@@ -1,0 +1,17 @@
+# 构建产物
+bin/
+obj/
+dist/
+installer/generated/
+installer/obj/
+*.user
+*.suo
+.vs/
+
+# 本地工具链与临时测试数据（不属于源码）
+toolchain/
+bench/
+**/out/
+
+# 日志
+*.log

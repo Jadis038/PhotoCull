@@ -1,0 +1,15 @@
+﻿stage,metric,value,unit,note
+enumerate,打开文件夹→文件名列表可见,8.0,ms,4000 个文件
+first_screen,首屏 20 张缩略图,193.6,ms,20 张
+switch_first,单击切图（首次）P50,23.6,ms,样本 10
+switch_first,单击切图（首次）P95,29.4,ms,
+switch_cached,单击切图（缓存命中）P50,0.0,ms,样本 10
+switch_cached,单击切图（缓存命中）P95,0.1,ms,
+full_decode,100% 全解（IMG_0001.NEF）,928.0,ms,6032×4032
+warm_all,全量缩略图预热总耗时,16.6,s,4000 张（200 张一批）
+warm_all,折算 2000 张耗时,8.3,s,按 4000 张外推
+warm_all,预热期间工作集峰值,471.8,MB,GC 后 465 MB
+cache,缓存命中率,0.7,%,命中 30，解码 4010
+decode,单张解码 P50,14.2,ms,样本 4010
+decode,单张解码 P95,22.9,ms,
+memory,进程内存峰值,574.3,MB,当前 465 MB

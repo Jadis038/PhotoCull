@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <PlatformTarget>x64</PlatformTarget>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <SelfContained>false</SelfContained>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <AssemblyName>LibRawProbe</AssemblyName>
+    <RootNamespace>LibRawProbe</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- LibRaw 0.21.1 二进制（LGPL-2.1 / CDDL-1.0），由 vcpkg 预编译 -->
+    <Content Include="..\..\native\libraw\**\*.dll" LinkBase="." CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,121 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  影·筛 —— WiX v4 每用户(perUser) 安装探针（spike S3）
+  目标：
+    1. 安装到 %LOCALAPPDATA%\Programs\影·筛（包内目录 Id 用 ASCII：YingShaiAppDir）
+    2. 免 UAC，安装时不触发提权
+    3. 每用户开始菜单快捷方式 + HKCU 文件关联 HKCU\Software\Classes\YingShai.Image
+    4. 卸载后目录、快捷方式、注册表全部清干净
+  注意：spike 里 ProductCode 写死是为了可复现；正式包应每次构建由 WiX 生成新的
+        ProductCode，只把 UpgradeCode 固定下来，并加 <MajorUpgrade/> 做覆盖升级。
+-->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+
+  <Package
+      Name="影·筛"
+      Manufacturer="影·筛"
+      Version="$(var.ProductVersion)"
+      ProductCode="{60C513B1-611E-4537-843B-23C17D36FA4E}"
+      UpgradeCode="{58530B61-D984-445B-B2BB-FA850040BFC5}"
+      Language="2052"
+      Codepage="936"
+      Scope="perUser"
+      InstallerVersion="500"
+      Compressed="yes">
+
+    <!-- 单块 CAB 内嵌进 MSI，产物只有一个 .msi 文件，便于拷贝分发 -->
+    <MediaTemplate EmbedCab="yes" />
+
+    <!--
+      每用户安装上下文：Scope="perUser" 会让 WiX 把包标成 LUA（UAC compliant，无需提权）包，
+      msiexec 日志里对应两行关键证据：
+        MSI_LUA: Package is marked as LUA installation capable with no elevation required
+        Running product '{ProductCode}' with user privileges: It's not assigned.
+      实测教训：如果**额外**再写 <Property Id="ALLUSERS" Value="2"/> 和
+      <Property Id="MSIINSTALLPERUSER" Value="1"/>（MS 文档里双用途包的标准写法），
+      日志会变成 "MSIINSTALLPERUSER property is not valid for UAC compliant package. Ignoring"
+      并且 ALLUSERS 被运行时删掉——对纯 perUser 包这两个属性是多余的，反而让人误以为
+      安装上下文没生效。所以这里不写它们。
+      需要 Windows Installer 5.0（Win7+）才有 LUA 每用户安装，故 InstallerVersion="500"。
+    -->
+
+    <!-- ================= 目录树 ================= -->
+
+    <!-- %LOCALAPPDATA%\Programs\影·筛 -->
+    <StandardDirectory Id="LocalAppDataFolder">
+      <Directory Id="ProgramsFolder" Name="Programs">
+        <Directory Id="YingShaiAppDir" Name="影·筛" />
+      </Directory>
+    </StandardDirectory>
+
+    <!-- 每用户开始菜单：%APPDATA%\Microsoft\Windows\Start Menu\Programs\影·筛 -->
+    <StandardDirectory Id="ProgramMenuFolder">
+      <Directory Id="YingShaiMenuDir" Name="影·筛" />
+    </StandardDirectory>
+
+    <!-- ================= 主程序文件 ================= -->
+
+    <DirectoryRef Id="YingShaiAppDir">
+      <!-- 探针程序 hello.exe：验收脚本按这个固定文件名检查文件落地 -->
+      <Component Id="HelloExe" Guid="{2D48FE64-3295-42B3-B759-532EA0279C67}">
+        <File Id="HelloExeFile" Source="$(var.SourceDir)\hello.exe" KeyPath="yes" />
+      </Component>
+
+      <!-- 正式产品的主程序名（中文名）：spike 里是 hello.exe 的副本，关联/快捷方式都指向它 -->
+      <Component Id="AppExe" Guid="{8EF4A9F3-46C9-4122-B18E-C5B35E747322}">
+        <File Id="AppExeFile" Source="$(var.SourceDir)\影·筛.exe" KeyPath="yes" />
+      </Component>
+
+      <!-- 卸载时删掉安装目录本身（组件必须有 KeyPath，用 HKCU 标记值当 KeyPath） -->
+      <Component Id="CleanupAppDir" Guid="{A36EAE59-9133-4CB8-BE12-BE99D1105112}">
+        <RegistryValue Root="HKCU" Key="Software\YingShai\WixSpike" Name="AppDir"
+                       Type="integer" Value="1" KeyPath="yes" />
+        <RemoveFolder Id="RemoveYingShaiAppDir" Directory="YingShaiAppDir" On="uninstall" />
+      </Component>
+    </DirectoryRef>
+
+    <!-- ================= HKCU 文件关联 ================= -->
+
+    <DirectoryRef Id="YingShaiAppDir">
+      <Component Id="ImageFileClass" Guid="{D735EDFD-2A21-459B-8C42-956D73A51F84}">
+        <!-- HKCU\Software\Classes\YingShai.Image 的默认值 = 显示名「影·筛」 -->
+        <RegistryValue Root="HKCU" Key="Software\Classes\YingShai.Image"
+                       Type="string" Value="影·筛" KeyPath="yes" />
+        <!-- 右键「打开方式」里的友好名称（可选，属于正式包该有的东西） -->
+        <RegistryValue Root="HKCU" Key="Software\Classes\YingShai.Image"
+                       Name="FriendlyTypeName" Type="string" Value="影·筛 图片" />
+        <!-- HKCU\Software\Classes\YingShai.Image\shell\open\command 的默认值 -->
+        <RegistryValue Root="HKCU" Key="Software\Classes\YingShai.Image\shell\open\command"
+                       Type="string" Value="&quot;[YingShaiAppDir]影·筛.exe&quot; &quot;%1&quot;" />
+      </Component>
+    </DirectoryRef>
+
+    <!-- ================= 开始菜单快捷方式（每用户） ================= -->
+
+    <DirectoryRef Id="YingShaiMenuDir">
+      <Component Id="StartMenuShortcut" Guid="{AD7D6DE5-4EA6-4E6C-9EF1-5AFC1225889C}">
+        <Shortcut Id="AppStartMenuShortcut"
+                  Directory="YingShaiMenuDir"
+                  Name="影·筛"
+                  Description="影·筛 —— 图片筛选工具"
+                  Target="[YingShaiAppDir]影·筛.exe"
+                  WorkingDirectory="YingShaiAppDir" />
+        <!-- 卸载时连「影·筛」这个开始菜单文件夹一起删掉 -->
+        <RemoveFolder Id="RemoveYingShaiMenuDir" Directory="YingShaiMenuDir" On="uninstall" />
+        <RegistryValue Root="HKCU" Key="Software\YingShai\WixSpike" Name="StartMenu"
+                       Type="integer" Value="1" KeyPath="yes" />
+      </Component>
+    </DirectoryRef>
+
+    <!-- ================= 功能 ================= -->
+
+    <Feature Id="MainFeature" Title="影·筛" Level="1">
+      <ComponentRef Id="HelloExe" />
+      <ComponentRef Id="AppExe" />
+      <ComponentRef Id="CleanupAppDir" />
+      <ComponentRef Id="ImageFileClass" />
+      <ComponentRef Id="StartMenuShortcut" />
+    </Feature>
+
+  </Package>
+</Wix>
