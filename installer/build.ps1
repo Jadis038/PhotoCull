@@ -43,6 +43,7 @@ New-Item -ItemType Directory -Force $inter | Out-Null
 & $WixExe build (Join-Path $Repo 'installer\Product.wxs') (Join-Path $Repo 'installer\generated\Files.wxs') `
     -d SourceDir=$Dist `
     -d ProductVersion=$Version `
+    -d IconFile="$Repo\src\YingShai.App\Assets\影筛.ico" `
     -intermediatefolder $inter `
     -arch x64 `
     -o $msi

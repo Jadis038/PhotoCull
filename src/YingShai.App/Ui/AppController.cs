@@ -19,6 +19,17 @@ public static class AppController
     {
         AppPaths.EnsureDirectories();
 
+        // 全局异常登记：任何未处理异常都写进 logs\app.log，方便定位（也用于无桌面验收）
+        AppDomain.CurrentDomain.UnhandledException += (_, e) =>
+            YingShai.Core.Util.AppLog.Error("未处理异常（AppDomain）", e.ExceptionObject as Exception);
+        TaskScheduler.UnobservedTaskException += (_, e) =>
+        {
+            YingShai.Core.Util.AppLog.Error("未观察的任务异常", e.Exception);
+            e.SetObserved();
+        };
+        Application.Current.DispatcherUnhandledException += (_, e) =>
+            YingShai.Core.Util.AppLog.Error("UI 线程未处理异常", e.Exception);
+
         bool uiSelfTest = args.Any(a => a == "--ui-selftest");
         if (!uiSelfTest)
         {
@@ -78,6 +89,7 @@ public static class AppController
     private static async void HandleNewArgs(string[] args)
     {
         if (_window == null) return;
+        YingShai.Core.Util.AppLog.Info($"收到新实例请求：{string.Join(" ", args)}");
         string? path = args.FirstOrDefault(a => !a.StartsWith("-") && (File.Exists(a) || Directory.Exists(a)));
         if (path != null)
         {
@@ -142,6 +154,21 @@ public static class AppController
                     string markedPng = Path.Combine(Path.GetDirectoryName(outPng)!, Path.GetFileNameWithoutExtension(outPng) + "_marked.png");
                     win.RenderToPng(markedPng);
                     lines.Add($"已渲染（带标记）：{markedPng}，已筛 {_session.MarkedCount}/{_session.TotalCount}");
+                }
+
+                if (vm.Current != null)
+                {
+                    try
+                    {
+                        var full = await win.TestFullResAsync();
+                        lines.Add($"100% 全量解码：{(full.Ok ? "成功" : "失败")} {full.W}×{full.H}，耗时 {full.Ms:F0} ms（后台线程，界面不阻塞）");
+                        if (!full.Ok) exitCode = 1;
+                    }
+                    catch (Exception ex)
+                    {
+                        lines.Add("100% 全量解码异常：" + ex.GetType().Name + ": " + ex.Message);
+                        exitCode = 1;
+                    }
                 }
 
                 if (vm.LargeImage == null) exitCode = 1;

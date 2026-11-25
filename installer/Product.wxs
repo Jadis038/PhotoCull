@@ -20,6 +20,11 @@
 
     <SummaryInformation Description="影·筛 —— Windows 图片快速筛选工具" Manufacturer="影·筛 开源项目" />
     <MediaTemplate EmbedCab="yes" />
+
+    <!-- 程序图标：ARP 卸载项与开始菜单快捷方式都用它 -->
+    <Icon Id="AppIcon" SourceFile="$(var.IconFile)" />
+    <Property Id="ARPPRODUCTICON" Value="AppIcon" />
+    <Property Id="ARPNOMODIFY" Value="1" />
     <MajorUpgrade DowngradeErrorMessage="已安装更新版本的「影·筛」，请先在「应用和功能」里卸载。" />
 
     <!-- ================= 目录树 ================= -->
@@ -41,7 +46,8 @@
                   Name="影·筛"
                   Description="影·筛 —— 图片快速筛选工具"
                   Target="[YingShaiAppDir]影·筛.exe"
-                  WorkingDirectory="YingShaiAppDir" />
+                  WorkingDirectory="YingShaiAppDir"
+                  Icon="AppIcon" />
         <RemoveFolder Id="RemoveYingShaiMenuDir" Directory="YingShaiMenuDir" On="uninstall" />
         <RegistryValue Root="HKCU" Key="Software\YingShai" Name="StartMenuInstalled"
                        Type="integer" Value="1" KeyPath="yes" />

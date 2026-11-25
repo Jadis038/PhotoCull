@@ -1,4 +1,4 @@
-﻿using YingShai.Core.Index;
+using YingShai.Core.Index;
 using YingShai.Core.Model;
 using YingShai.Core.Settings;
 
@@ -117,8 +117,17 @@ public sealed class MarkService
         }).ContinueWith(t =>
         {
             var r = t.IsCompletedSuccessfully ? t.Result : OpResult.Fail(t.Exception?.GetBaseException().Message ?? "操作异常");
-            if (r.Ok) onSuccess();
-            else { item.State = MarkState.None; item.Status = r.Error; }
+            if (r.Ok)
+            {
+                onSuccess();
+                Util.AppLog.Info($"移入筛选：{item.Name} -> {item.Record?.DestPath}（{mode}）");
+            }
+            else
+            {
+                item.State = MarkState.None;
+                item.Status = r.Error;
+                Util.AppLog.Warn($"移入筛选失败：{item.Name} | {r.Error}");
+            }
             return r;
         }, TaskScheduler.Default);
     }
@@ -141,8 +150,17 @@ public sealed class MarkService
         }).ContinueWith(t =>
         {
             var r = t.IsCompletedSuccessfully ? t.Result : OpResult.Fail(t.Exception?.GetBaseException().Message ?? "操作异常");
-            if (r.Ok) PushUndo(new UndoEntry($"取消「{item.Name}」", () => RemMarkAsync(item, record)));
-            else { item.State = MarkState.Marked; item.Status = r.Error; }
+            if (r.Ok)
+            {
+                PushUndo(new UndoEntry($"取消「{item.Name}」", () => RemMarkAsync(item, record)));
+                Util.AppLog.Info($"取消筛选：{item.Name}（{record.Kind}）");
+            }
+            else
+            {
+                item.State = MarkState.Marked;
+                item.Status = r.Error;
+                Util.AppLog.Warn($"取消筛选失败：{item.Name} | {r.Error}");
+            }
             return r;
         }, TaskScheduler.Default);
     }
@@ -294,6 +312,8 @@ public sealed class MarkService
 
     private async Task<OpResult> DoUnmarkAsync(ImageItem item, MarkRecord record, CancellationToken ct, IProgress<OpProgress> progress)
     {
+        // 这里全部是同步文件操作（队列线程上执行），await 只为统一签名，不切线程
+        await Task.CompletedTask;
         try
         {
             progress.Report(new OpProgress { Message = $"取消筛选 {item.Name}" });

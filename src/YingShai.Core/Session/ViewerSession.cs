@@ -141,6 +141,7 @@ public sealed class ViewerSession : IDisposable
         StatusMessage?.Invoke(this, rebuilt
             ? $"已打开：{Path.GetFileName(folder)}（索引丢失，已按「筛选」内容重建 {marks.Count} 条标记）"
             : $"已打开：{Path.GetFileName(folder)}，共 {items.Count} 张，已筛 {MarkedCount} 张");
+        Util.AppLog.Info($"打开文件夹：{folder}，{items.Count} 张，枚举 {LastScanMs:F0}ms，已筛 {MarkedCount}");
         return true;
     }
 

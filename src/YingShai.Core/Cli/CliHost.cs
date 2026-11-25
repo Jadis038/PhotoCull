@@ -43,6 +43,13 @@ public static class CliHost
             case "--selftest":
                 return new SelfTest().Run();
 
+            case "--make-icon":
+            {
+                // 生成程序图标（256×256 PNG-in-ICO），供 exe/快捷方式/卸载项使用
+                if (args.Length < 2) { Console.Error.WriteLine("用法：--make-icon <out.ico>"); return 2; }
+                return IconMaker.MakeIcon(args[1]);
+            }
+
             case "--matrix":
             {
                 if (args.Length < 2) { Console.Error.WriteLine("用法：--matrix <文件夹> [--out x.csv] [--full-decode]"); return 2; }

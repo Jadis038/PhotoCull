@@ -1,4 +1,4 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using System.IO;
 using System.Text;
 using System.Windows.Media;
@@ -131,7 +131,7 @@ public sealed class SelfTest
     }
 
     private static List<string> Names(string dir)
-        => Directory.Exists(dir) ? Directory.GetFiles(dir).Select(Path.GetFileName).OrderBy(x => x).ToList()! : new();
+        => Directory.Exists(dir) ? Directory.GetFiles(dir).Select(f => Path.GetFileName(f) ?? "").OrderBy(x => x).ToList() : new();
 
     // ——— 用例 ———
 

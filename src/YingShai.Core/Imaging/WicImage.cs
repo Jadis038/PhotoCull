@@ -158,13 +158,17 @@ public static class WicImage
         return gray;
     }
 
-    /// <summary>把 24 位 RGB 数据（LibRaw 内存位图）转成 BitmapSource（像素直接拷进 WPF 位图，避免中间 byte[]）。</summary>
+    /// <summary>
+    /// 把 24 位 RGB 数据（LibRaw 内存位图）转成 BitmapSource。
+    /// 先把原生像素拷进托管数组再用 BitmapSource.Create：不用 WriteableBitmap，
+    /// 因为后者在非 Dispatcher 线程上创建、随后又被 UI 线程使用，WPF 有已知的崩溃风险。
+    /// </summary>
     public static BitmapSource FromRgb24(IntPtr data, int width, int height, int stride)
     {
-        var wb = new WriteableBitmap(width, height, 96, 96, PixelFormats.Rgb24, null);
-        wb.WritePixels(new Int32Rect(0, 0, width, height), data, stride * height, stride);
-        wb.Freeze();
-        return wb;
+        int size = stride * height;
+        var buffer = new byte[size];
+        System.Runtime.InteropServices.Marshal.Copy(data, buffer, 0, size);
+        return FromRgb24(buffer, width, height, stride);
     }
 
     public static BitmapSource FromRgb24(byte[] data, int width, int height, int stride)

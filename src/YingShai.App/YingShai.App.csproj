@@ -9,6 +9,7 @@
     <AssemblyName>影·筛</AssemblyName>
     <RootNamespace>YingShai.App</RootNamespace>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>Assets\影筛.ico</ApplicationIcon>
     <StartupObject>YingShai.App.Program</StartupObject>
     <PublishSingleFile>false</PublishSingleFile>
     <SelfContained>true</SelfContained>
@@ -21,7 +22,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <None Update="Assets\**\*" CopyToOutputDirectory="PreserveNewest" />
+    <!-- 程序图标：同时作为 exe 图标和应用内窗口图标（Resource 便于 XAML 引用） -->
+    <Resource Include="Assets\影筛.ico" />
   </ItemGroup>
 
 </Project>

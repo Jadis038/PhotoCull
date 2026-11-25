@@ -35,6 +35,13 @@ public partial class MainWindow : Window
         _vm = vm;
         InitializeComponent();
 
+        // 窗口图标：从内嵌资源读（XAML 里写相对路径会因中文资源名解析失败，这里用 pack URI + 兜底）
+        try
+        {
+            Icon = BitmapFrame.Create(new Uri("pack://application:,,,/Assets/影筛.ico", UriKind.Absolute));
+        }
+        catch { }
+
         // 无颜色 / 亮色主题下也保证可读
         DataContext = vm;
         _vm.PropertyChanged += (_, e) =>
@@ -184,7 +191,7 @@ public partial class MainWindow : Window
                 {
                     // 布局可能还没跑完（ActualWidth 还是 0），延后到布局结束再适配一次
                     ApplyFit();
-                    Dispatcher.BeginInvoke(new Action(() => { if (_mode == ZoomMode.Fit) ApplyFit(); }),
+                    _ = Dispatcher.BeginInvoke(new Action(() => { if (_mode == ZoomMode.Fit) ApplyFit(); }),
                         DispatcherPriority.Loaded);
                 }
                 else ApplyFree();
@@ -647,10 +654,21 @@ public partial class MainWindow : Window
         Session.Dispose();
     }
 
-    public string LayoutDebug => $"ImageArea={ImageArea.ActualWidth:F0}x{ImageArea.ActualHeight:F0} " +
-                                 $"img={(int)(_vm.LargeImage?.PixelWidth ?? 0)}x{(int)(_vm.LargeImage?.PixelHeight ?? 0)} " +
-                                 $"scale={ImgScale.ScaleX:F3} tx={ImgTranslate.X:F1} ty={ImgTranslate.Y:F1} " +
-                                 $"render={MainImage.RenderSize.Width:F0}x{MainImage.RenderSize.Height:F0}";
+    public string LayoutDebug =>
+        $"ImageArea={ImageArea.ActualWidth:F0}x{ImageArea.ActualHeight:F0} " +
+        $"img={(int)(_vm.LargeImage?.PixelWidth ?? 0)}x{(int)(_vm.LargeImage?.PixelHeight ?? 0)} " +
+        $"scale={ImgScale.ScaleX:F3} tx={ImgTranslate.X:F1} ty={ImgTranslate.Y:F1} " +
+        $"render={MainImage.RenderSize.Width:F0}x{MainImage.RenderSize.Height:F0}";
+
+    /// <summary>验收用：切到 100%，触发后台全解并返回耗时与结果。</summary>
+    public async Task<(bool Ok, double Ms, int W, int H)> TestFullResAsync()
+    {
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        await EnsureFullResAsync();
+        sw.Stop();
+        var img = _vm.FullImage;
+        return (img != null, sw.Elapsed.TotalMilliseconds, img?.PixelWidth ?? 0, img?.PixelHeight ?? 0);
+    }
 
     /// <summary>调试/验收：把当前窗口渲染成 PNG（无交互桌面也能出图）。</summary>
     public void RenderToPng(string path)

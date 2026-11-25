@@ -1,4 +1,4 @@
-using System.Windows.Media.Imaging;
+﻿using System.Windows.Media.Imaging;
 
 namespace YingShai.Core.Imaging;
 
@@ -48,14 +48,6 @@ public static class ExifReader
         var v = Num(md, "/app1/ifd/{ushort=274}") ?? Num(md, "/ifd/{ushort=274}");
         if (v is >= 1 and <= 8) return (int)v.Value;
         return 1;
-    }
-
-    /// <summary>补全 PhotoMetadata 中 EXIF 才能提供的字段。</summary>
-    public static void FillFromMetadata(BitmapMetadata? md, Model.PhotoMetadata meta)
-    {
-        // 只补空字段，不覆盖 LibRaw 已经给出的值
-        static string? Pick(string? a, string? b) => string.IsNullOrWhiteSpace(a) ? b : a;
-        _ = meta; // PhotoMetadata 是 init-only，补充在 ImageDecoder 里做
     }
 
     /// <summary>读一个 EXIF 字段集合（RAW 内嵌 JPEG / 普通 JPG 都可用）。</summary>
