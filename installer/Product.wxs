@@ -11,7 +11,7 @@
   <Package Name="影·筛"
            Manufacturer="影·筛 开源项目"
            Version="$(var.ProductVersion)"
-           ProductCode="{3F8A1C92-6D74-4E5B-9A0C-1B7E2D8F4C63}"
+           ProductCode="{C8D1A0B3-4E27-4F96-9A5D-2C6B8E1F0A74}"
            UpgradeCode="{2F0C7B51-8A5E-4C33-9C1B-6E7D51B2A4C8}"
            Language="2052"
            Codepage="936"
@@ -19,7 +19,7 @@
            InstallerVersion="500"
            Compressed="yes">
     <!--
-      ProductCode 固定到版本（1.0.4 = {7C4E9A21-...}）：
+      ProductCode 固定到版本（1.0.5 = {7C4E9A21-...}）：
       自动生成的 ProductCode 配合 msiexec /x <msi路径> 会在反复重打包/安装的机器上
       与实际注册的产品错位（MSI 组件按 GUID 引用计数，错位后卸载只减计数不删文件，
       2026-11-26 实测踩坑）。以后升版本时换一个新 ProductCode 并同步更新 installer/verify.ps1。

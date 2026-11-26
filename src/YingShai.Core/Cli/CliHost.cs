@@ -29,9 +29,14 @@ public static class CliHost
     }
 
     public static bool IsConsoleMode(string[] args)
-        => args.Any(a => a is "--selftest" or "--bench" or "--version" or "-v" or "--help" or "-h" or "/?");
+        => args.Any(a => a is "--selftest" or "--bench" or "--version" or "-v" or "--help" or "-h" or "/?"
+            or "--update-check" or "--update-auto-accept" or "--matrix" or "--diag" or "--diag-meta"
+            or "--decode-full" or "--shell-thumb" or "--make-icon");
 
-    public static int Run(string[] args)
+    /// <summary>CLI 模式需要异步的分支走这里。</summary>
+    public static Task<int> RunAsync(string[] args) => RunAsyncInner(args);
+
+    private static async Task<int> RunAsyncInner(string[] args)
     {
         if (args.Length == 0) return 0;
         switch (args[0])
@@ -44,6 +49,29 @@ public static class CliHost
 
             case "--selftest":
                 return new SelfTest().Run();
+
+            case "--update-check":
+            case "--update-auto-accept":
+            {
+                // 更新流程（无 GUI）：--update-check 只检测并打印；--update-auto-accept 检测→下载→启动安装（测试钩子）
+                bool auto = args[0] == "--update-auto-accept";
+                var info = await Update.UpdateChecker.CheckLatestAsync();
+                if (info == null) { Console.WriteLine("更新检查失败：GitHub 不可达"); return 1; }
+                Console.WriteLine($"最新版本：{info.TagName}    当前版本：v{Update.UpdateInfo.CurrentVersion.ToString(3)}    有更新：{info.HasUpdate}");
+                if (!info.HasUpdate) return 0;
+                Console.WriteLine($"安装包：{info.MsiUrl}");
+                if (!auto) return 0;
+                var dest = Path.Combine(Path.GetTempPath(), $"PhotoCull-Setup-{info.LatestVersion}.msi");
+                Console.WriteLine("开始下载…");
+                await Update.UpdateChecker.DownloadAsync(info.MsiUrl!, dest,
+                    (done, total) => { if (Console.CursorLeft == 0) Console.Write($"  已下载 {done / 1048576.0:F1} MB" + (total > 0 ? $" / {total / 1048576.0:F1} MB" : "")); },
+                    CancellationToken.None);
+                Console.WriteLine();
+                Console.WriteLine($"下载完成：{dest}（{new FileInfo(dest).Length / 1048576.0:F1} MB）");
+                Update.UpdateChecker.LaunchInstaller(dest);
+                Console.WriteLine("已启动安装程序（应用 2 秒后退出交给安装）");
+                return 0;
+            }
 
             case "--decode-full":
             {
@@ -214,10 +242,13 @@ public static class CliHost
         }
     }
 
+    /// <summary>同步包装（控制台 Main 用；GUI 入口不走这里）。</summary>
+    public static int Run(string[] args) => RunAsync(args).GetAwaiter().GetResult();
+
     private static void PrintHelp()
     {
         Console.WriteLine("""
-            影·筛（YingShai）— Windows 图片快速筛选工具
+            影·筛（YingShai / PhotoCull）— Windows 图片快速筛选工具
 
             用法：
               影·筛.exe                          打开图形界面
@@ -226,6 +257,9 @@ public static class CliHost
               影·筛.exe --selftest               跑内置自检（扫描/排序/复制/冲突改名/取消/索引重建/撤销）
               影·筛.exe --bench <文件夹>         跑性能基准测试并输出 CSV
               影·筛.exe --bench <文件夹> --cold  先清空缩略图缓存再测（冷启动）
+              影·筛.exe --matrix <文件夹>        逐文件"能否打开"测试矩阵
+              影·筛.exe --update-check           检查 GitHub 最新版本（无 GUI）
+              影·筛.exe --update-auto-accept     检测到新版本直接下载并启动安装（自动化测试用）
               影·筛.exe --version                版本信息
 
             缓存与索引：%LOCALAPPDATA%\影·筛\（cache / state / logs / settings.json）

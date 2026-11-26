@@ -7,7 +7,7 @@ $Repo    = if ($global:REPO) { $global:REPO } else { (Resolve-Path (Join-Path $P
 $Dist    = Join-Path $Repo 'dist\app'
 $OutDir  = Join-Path $Repo 'dist'
 $WixExe  = 'D:\DSH工作区\toolchain\wix\wix.exe'
-$Version = '1.0.4'
+$Version = '1.0.5'
 
 Write-Host "== [1/5] 自包含发布 (net8.0-windows, win-x64) ==" -ForegroundColor Cyan
 if (Test-Path $Dist) { Remove-Item $Dist -Recurse -Force }
@@ -48,6 +48,12 @@ New-Item -ItemType Directory -Force $inter | Out-Null
     -arch x64 `
     -o $msi
 if ($LASTEXITCODE -ne 0) { throw "wix build 失败（$LASTEXITCODE）" }
+
+Write-Host "" -ForegroundColor Green
+$rel = Join-Path $OutDir 'release'
+New-Item -ItemType Directory -Force $rel | Out-Null
+Copy-Item $msi (Join-Path $rel ("PhotoCull-Setup-$Version.msi")) -Force
+Write-Host "发布资产：$rel\PhotoCull-Setup-$Version.msi"
 
 Write-Host "== [5/5] 完成 ==" -ForegroundColor Green
 $size = [math]::Round((Get-Item $msi).Length / 1MB, 1)

@@ -68,6 +68,8 @@ public static class AppController
                 return;
             }
             await InitialOpenAsync(args, settings);
+            // 每次启动检查 GitHub Releases 更新（--update-auto-accept 为自动化测试钩子）
+            _ = CheckUpdateAsync(args.Contains("--update-auto-accept"));
         };
 
         win.Show();
@@ -85,6 +87,33 @@ public static class AppController
         }
         if (settings.RestoreLastSession && !string.IsNullOrEmpty(settings.LastFolder) && Directory.Exists(settings.LastFolder))
             await _window.OpenFolderAsync(settings.LastFolder);
+    }
+
+    /// <summary>启动后检查 GitHub Releases 更新；有新版本弹更新对话框（网络失败静默跳过）。</summary>
+    private static async Task CheckUpdateAsync(bool autoAccept)
+    {
+        try
+        {
+            var info = await YingShai.Core.Update.UpdateChecker.CheckLatestAsync();
+            YingShai.Core.Util.AppLog.Info(info == null
+                ? "更新检查：GitHub 不可达，跳过"
+                : $"更新检查：最新 {info.TagName}，当前 v{YingShai.Core.Update.UpdateInfo.CurrentVersion.ToString(3)}，有更新={info.HasUpdate}");
+            if (info?.HasUpdate != true || _window == null || _vm == null) return;
+            await _window.Dispatcher.InvokeAsync(async () =>
+            {
+                if (autoAccept)
+                {
+                    // 测试钩子：跳过对话框，直接下载并启动安装
+                    var dest = Path.Combine(Path.GetTempPath(), $"PhotoCull-Setup-{info.LatestVersion}.msi");
+                    await YingShai.Core.Update.UpdateChecker.DownloadAsync(info.MsiUrl!, dest, null, CancellationToken.None);
+                    YingShai.Core.Update.UpdateChecker.LaunchInstaller(dest);
+                    Application.Current.Shutdown(0);
+                    return;
+                }
+                await UpdateDialog.ShowAndInstallAsync(_window, info);
+            });
+        }
+        catch { }
     }
 
     private static async void HandleNewArgs(string[] args)

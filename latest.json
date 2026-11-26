@@ -1,0 +1,5 @@
+{
+  "tag": "v1.0.5",
+  "notes": "v1.0.5 首个支持自动更新的版本：启动时检查 GitHub Releases，有新版本弹窗提示并可一键下载安装；内置 Windows 资源管理器同源缩略图快路径；修复 Z8 100% 花屏；全量预热提速（2550 张 Z8 约 26 秒）；新增署名信息。",
+  "msi": "https://github.com/Jadis038/PhotoCull/releases/download/v1.0.5/PhotoCull-Setup-1.0.5.msi"
+}
