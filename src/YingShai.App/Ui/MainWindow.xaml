@@ -216,12 +216,16 @@
                     <Border Height="1" Background="#3A3A44" Margin="0,12,0,8"/>
                     <TextBlock Text="{Binding FilePathText}" Foreground="#6F6F7C" FontSize="10.5" TextWrapping="Wrap"/>
 
-                    <!-- 应用信息：作者与图标署名（低调放信息栏最下方） -->
-                    <TextBlock x:Name="CreditText" Margin="0,14,0,2" FontSize="9.5" Foreground="#4E4E5A"
-                               TextWrapping="Wrap"
-                               Text="作者：Галин · 图标：Ho Wing Own"
+                    <!-- 应用信息：作者与图标署名（信息栏最下方） -->
+                    <Border Height="1" Background="#3A3A44" Margin="0,14,0,10"/>
+                    <TextBlock x:Name="CreditText" FontSize="13.5" Foreground="#B9B9C6" TextWrapping="Wrap"
+                               LineHeight="20"
+                               Text="作者：Галин"/>
+                    <TextBlock FontSize="13.5" Foreground="#B9B9C6" TextWrapping="Wrap" LineHeight="20"
+                               Text="软件图标：Ho Wing Own"/>
+                    <TextBlock FontSize="11.5" Foreground="#8A8A98" Margin="0,6,0,2" TextWrapping="Wrap"
+                               Text="{Binding AppVersionText}"
                                ToolTip="影·筛 · 作者 Галин · 软件图标 Ho Wing Own · MIT License"/>
-                    <TextBlock FontSize="9" Foreground="#43434E" Text="{Binding AppVersionText}" TextWrapping="Wrap"/>
                 </StackPanel>
             </ScrollViewer>
         </Border>
@@ -295,6 +299,10 @@
         <!-- ============ 状态栏 ============ -->
         <Border Grid.Row="3" Grid.ColumnSpan="2" Background="{StaticResource BarBrush}" Padding="12,5">
             <DockPanel LastChildFill="True">
+                <!-- 署名常驻右下角，永远可见 -->
+                <TextBlock DockPanel.Dock="Right" Text="作者：Галин · 图标：Ho Wing Own" Foreground="#A8A8B6"
+                           FontSize="12" VerticalAlignment="Center" Margin="14,0,0,0"
+                           ToolTip="影·筛 · 作者 Галин · 软件图标 Ho Wing Own · MIT License"/>
                 <TextBlock DockPanel.Dock="Right" Text="{Binding RemainingText}" Foreground="#FFD479" Margin="12,0,0,0"/>
                 <TextBlock DockPanel.Dock="Right" Text="{Binding ProgressText}" Foreground="#9CC7FF" Margin="12,0,0,0"/>
                 <TextBlock Text="{Binding StatusText}" Foreground="{StaticResource DimBrush}" TextTrimming="CharacterEllipsis"/>

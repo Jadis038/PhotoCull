@@ -87,9 +87,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public string RemainingText => $"待筛 {Session.RemainingCount}";
     public string FilePathText => Current?.FullPath ?? "";
 
-    /// <summary>信息栏最下方那行小字（版本 + 作者/图标署名，低调）。</summary>
-    public string AppVersionText =>
-        $"影·筛 {(typeof(MainViewModel).Assembly.GetName().Version is { } v ? v.ToString(3) : "")} · 作者：Галин · 图标：Ho Wing Own";
+    /// <summary>信息栏最下方的版本号行（作者/图标署名在上一行）。</summary>
+    public string AppVersionText => $"影·筛 v{typeof(MainViewModel).Assembly.GetName().Version?.ToString(3)}";
 
     public string SizeText => Current == null ? "—" : FormatSize(Current.Size);
 
