@@ -7,7 +7,7 @@ $Repo    = if ($global:REPO) { $global:REPO } else { (Resolve-Path (Join-Path $P
 $Dist    = Join-Path $Repo 'dist\app'
 $OutDir  = Join-Path $Repo 'dist'
 $WixExe  = 'D:\DSH工作区\toolchain\wix\wix.exe'
-$Version = '1.0.3'
+$Version = '1.0.4'
 
 Write-Host "== [1/5] 自包含发布 (net8.0-windows, win-x64) ==" -ForegroundColor Cyan
 if (Test-Path $Dist) { Remove-Item $Dist -Recurse -Force }

@@ -1,0 +1,18 @@
+﻿文件名,扩展名,品牌机型,大小MB,能否打开,内嵌预览,缩略图耗时ms,全解耗时ms,信息栏字段,错误
+OPPO HEIC有位置信息.heic,.heic,(无),3.2,是,WIC 3072x4096,287,-,2/10,
+OPPO JPG有位置信息.jpg,.jpg,OPPO Find X10 Pro Max,5.9,是,WIC 3072x4096,51,-,9/10,
+OPPO RAW有位置信息.dng,.dng,Find X10 Pro Max,17.6,是,JPEG 4314KB,4,-,9/10,
+OPPO RAW有位置信息，横屏（需要注意旋转）.dng,.dng,Find X10 Pro Max,16.7,是,JPEG 3898KB,3,-,9/10,
+三星HEIC有位置信息.heic,.heic,(无),2.1,是,WIC 3000x4000,224,-,2/10,
+三星JPG有位置信息.jpg,.jpg,Galaxy S24 Ultra,3.8,是,WIC 4000x3000,47,-,8/10,
+三星RAW有位置信息.dng,.dng,-,94.5,否,无,0,-,-,无法解析该 RAW：Unsupported file format or not RAW file
+佳能5D3 RAW.CR2,.cr2,EOS 5D Mark III,24.5,是,JPEG 1525KB,1,-,9/10,
+佳能R8 RAW.CR3,.cr3,EOS R8,27.9,是,JPEG 2791KB,2,-,9/10,
+大疆AIE3 RAW有位置信息.DNG,.dng,FC8282,95.2,是,JPEG 648KB,0,-,8/10,
+尼康Z8 AVIF.avif,.avif,(无),13.9,是,WIC 8256x5504,41,-,2/10,
+尼康Z8 JPG XL.jxl,.jxl,(无),7.8,是,WIC 8256x5504,1814,-,2/10,
+尼康Z8 JPG有位置信息.JPG,.jpg,NIKON Z 8,6.6,是,WIC 6192x4128,57,-,9/10,
+尼康Z8 PNG.png,.png,(无),228.6,是,WIC 8256x5504,961,-,2/10,
+尼康Z8 RAW有位置信息.NEF,.nef,Z 8,19.8,是,JPEG 2442KB,4,-,9/10,
+尼康Z8 TIFF.tif,.tif,(无),260.1,是,WIC 8256x5504,204,-,2/10,
+索尼A6700 RAW.ARW,.arw,ILCE-6700,28.3,是,JPEG 2898KB,2,-,9/10,

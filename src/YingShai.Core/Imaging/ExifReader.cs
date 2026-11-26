@@ -1,4 +1,4 @@
-﻿using System.Windows.Media.Imaging;
+using System.Windows.Media.Imaging;
 
 namespace YingShai.Core.Imaging;
 
@@ -18,6 +18,9 @@ public static class ExifReader
     {
         var v = Query(md, q);
         if (v == null) return null;
+        // WIC 对某些标签（如 Model/Artist）会返回 string[]（每个字符一项），拼回字符串
+        if (v is string[] arr) return string.Concat(arr).Trim();
+        if (v is string[] { Length: 0 }) return null;
         var s = v.ToString()?.Trim();
         return string.IsNullOrWhiteSpace(s) || s == "0" ? null : s;
     }

@@ -157,6 +157,10 @@ public sealed class DecodeScheduler : IDisposable
 
     private long _cacheHits2;
 
+    /// <summary>走了 Windows 缩略图快路径的张数（bench/统计用）。</summary>
+    public long ShellThumbCount => _shellThumbCount;
+    private long _shellThumbCount;
+
     /// <summary>把已在队列里的任务改优先级（可见性变化时立即重排）。不存在则忽略。</summary>
     public void Reprioritize(ImageItem item, int size, int newPriority)
     {
@@ -261,6 +265,17 @@ public sealed class DecodeScheduler : IDisposable
         {
             Interlocked.Increment(ref _cacheHits2);
             job.Tcs.TrySetResult(disk);
+            return;
+        }
+
+        // Windows 资源管理器同源缩略图：系统有 RAW 编解码器（或缩略图缓存里已有）时毫秒级出图；
+        // 系统解不了则静默回退到 LibRaw 内嵌 JPEG 路径
+        if (ShellThumbnail.TryGet(job.Item.FullPath, job.CacheSize, out var shellBmp) && shellBmp != null)
+        {
+            Interlocked.Increment(ref _shellThumbCount);
+            _cache.PutMemory(job.RowKey, shellBmp);
+            try { _cache.PutDisk(key, job.CacheSize, shellBmp); } catch { }
+            job.Tcs.TrySetResult(shellBmp);
             return;
         }
 

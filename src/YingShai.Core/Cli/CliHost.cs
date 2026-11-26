@@ -47,39 +47,40 @@ public static class CliHost
 
             case "--decode-full":
             {
-                // 诊断：全解一个 RAW，打印 libraw_processed_image_t 的原始字段，用于定位位图转换问题
-                if (args.Length < 2) { Console.Error.WriteLine("用法：--decode-full <raw>"); return 2; }
-                var sw = System.Diagnostics.Stopwatch.StartNew();
-                if (!Imaging.LibRawImage.TryOpen(args[1], out var img, out var err) || img == null)
-                { Console.Error.WriteLine("打开失败：" + err); return 1; }
-                using (img)
+                // 诊断：走正式的 100% 全解路径（内嵌全尺寸 JPEG 优先 → demosaic 兜底），可导出 PNG 检查
+                if (args.Length < 2) { Console.Error.WriteLine("用法：--decode-full <raw> [out.png]"); return 2; }
+                var outcome = Imaging.ImageDecoder.DecodeFull(args[1]);
+                Console.WriteLine($"source={outcome.Source} ok={outcome.Ok} err={outcome.Error} {outcome.ElapsedMs:F0}ms " +
+                                  $"bitmap={outcome.Bitmap?.PixelWidth}x{outcome.Bitmap?.PixelHeight}");
+                if (!outcome.Ok || outcome.Bitmap == null) return 1;
+                if (args.Length > 2)
                 {
-                    var meta = img.ReadMetadata();
-                    Console.WriteLine($"open ok: {meta.Model} {meta.PixelWidth}x{meta.PixelHeight}");
-                    int rc = YingShai.Core.Imaging.LibRawInterop.libraw_unpack(img.Handle);
-                    Console.WriteLine($"unpack rc={rc} {YingShai.Core.Imaging.LibRawInterop.ErrorText(rc)}");
-                    if (rc != 0) return 1;
-                    YingShai.Core.Imaging.LibRawInterop.libraw_set_output_bps(img.Handle, 8);
-                    YingShai.Core.Imaging.LibRawInterop.libraw_set_output_color(img.Handle, 1);
-                    rc = YingShai.Core.Imaging.LibRawInterop.libraw_dcraw_process(img.Handle);
-                    Console.WriteLine($"dcraw_process rc={rc} {YingShai.Core.Imaging.LibRawInterop.ErrorText(rc)}");
-                    if (rc != 0) return 1;
-                    IntPtr mem = YingShai.Core.Imaging.LibRawInterop.libraw_dcraw_make_mem_image(img.Handle, out int merr);
-                    if (mem == IntPtr.Zero) { Console.WriteLine($"make_mem_image err={YingShai.Core.Imaging.LibRawInterop.ErrorText(merr)}"); return 1; }
-                    var p = YingShai.Core.Imaging.LibRawInterop.GetProcessedImage(mem);
-                    Console.WriteLine($"type={p.type} width={p.width} height={p.height} colors={p.colors} bits={p.bits} data_size={p.data_size}");
-                    Console.WriteLine($"期望 stride*height = {(int)p.width * 3 * p.height}");
-                    try
-                    {
-                        IntPtr dp = IntPtr.Add(mem, YingShai.Core.Imaging.LibRawProcessedImageLayout.DataOffset);
-                        var bs = YingShai.Core.Imaging.WicImage.FromRgb24(dp, p.width, p.height, p.width * 3);
-                        Console.WriteLine($"转位图 ok: {bs.PixelWidth}x{bs.PixelHeight}");
-                    }
-                    catch (Exception ex) { Console.WriteLine($"转位图 FAIL: {ex.Message}"); }
-                    YingShai.Core.Imaging.LibRawInterop.libraw_dcraw_clear_mem(mem);
+                    var enc = new System.Windows.Media.Imaging.PngBitmapEncoder();
+                    enc.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(outcome.Bitmap));
+                    using var fs = File.Create(args[2]);
+                    enc.Save(fs);
+                    Console.WriteLine($"dumped={args[2]} {outcome.Bitmap.PixelWidth}x{outcome.Bitmap.PixelHeight}");
                 }
+                return 0;
+            }
+
+            case "--shell-thumb":
+            {
+                // 诊断：测试 Windows 资源管理器同源缩略图（系统 RAW 编解码器/缩略图缓存）
+                if (args.Length < 2) { Console.Error.WriteLine("用法：--shell-thumb <图片> [尺寸] [out.png]"); return 2; }
+                int size = args.Length > 2 && int.TryParse(args[2], out var s) ? s : 256;
+                var sw = System.Diagnostics.Stopwatch.StartNew();
+                bool ok = Imaging.ShellThumbnail.TryGet(args[1], size, out var bmp);
                 sw.Stop();
-                Console.WriteLine($"总耗时 {sw.Elapsed.TotalMilliseconds:F0} ms");
+                if (!ok || bmp == null) { Console.WriteLine($"FAIL（{sw.ElapsedMilliseconds}ms）——系统无法生成该格式的缩略图"); return 1; }
+                Console.WriteLine($"ok {bmp.PixelWidth}x{bmp.PixelHeight}（{sw.ElapsedMilliseconds}ms）");
+                if (args.Length > 3)
+                {
+                    var enc = new System.Windows.Media.Imaging.PngBitmapEncoder();
+                    enc.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(bmp));
+                    using var fs = File.Create(args[3]);
+                    enc.Save(fs);
+                }
                 return 0;
             }
 

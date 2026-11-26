@@ -144,7 +144,14 @@ public static class ImageDecoder
         }
     }
 
-    /// <summary>100% 查看用的全尺寸解码（后台线程调用）。</summary>
+    /// <summary>
+    /// 100% 查看用的全尺寸解码（后台线程调用）。
+    /// ① 优先用相机内嵌的全尺寸 JPEG：多数机型（Z8/R5/A7R2/D750…）内嵌预览就是原生分辨率，
+    ///    相机自家去马赛克质量更好，还快约 8 倍；
+    /// ② 内嵌预览缺失或明显小于原生分辨率（&lt;90%）时，才做完整 demosaic。
+    ///    （实测踩坑：LibRaw 0.21.1 解 Nikon Z8 压缩 NEF 报 "data corrupted" 且输出花屏，
+    ///    走内嵌 JPEG 可完全绕开。）
+    /// </summary>
     public static DecodeOutcome DecodeFull(string path, int demosaicQuality = 3)
     {
         var sw = Stopwatch.StartNew();
@@ -156,12 +163,38 @@ public static class ImageDecoder
             using (img)
             {
                 var meta = img.ReadMetadata();
+
+                // ① 内嵌全尺寸 JPEG 快路径
+                var preview = img.TryReadPreview(out _);
+                if (preview?.Kind == LibRawImageKind.Jpeg && preview.JpegData != null
+                    && meta.PixelWidth is > 0 && meta.PixelHeight is > 0)
+                {
+                    var d = WicImage.DecodeScaled(preview.JpegData, int.MaxValue);
+                    double rw = (double)d.SourceWidth / meta.PixelWidth.Value;
+                    double rh = (double)d.SourceHeight / meta.PixelHeight.Value;
+                    if (Math.Min(rw, rh) >= 0.9)
+                    {
+                        sw.Stop();
+                        return new DecodeOutcome
+                        {
+                            Bitmap = d.Bitmap,
+                            Metadata = Merge(meta, d.Exif, d.SourceWidth, d.SourceHeight),
+                            Source = DecodeSource.LibRawThumb,
+                            ElapsedMs = sw.Elapsed.TotalMilliseconds
+                        };
+                    }
+                }
+
+                // ② 完整 demosaic 兜底（内嵌预览缺失或太小）
                 var full = img.TryDecodeFull(out string ferr, demosaicQuality);
                 sw.Stop();
-                if (full == null) return new DecodeOutcome { Error = ferr, Metadata = meta, ElapsedMs = sw.Elapsed.TotalMilliseconds };
+                if (full == null)
+                    return new DecodeOutcome { Error = ferr, Metadata = meta, ElapsedMs = sw.Elapsed.TotalMilliseconds };
                 return new DecodeOutcome
                 {
-                    Bitmap = full, Metadata = meta, Source = DecodeSource.LibRawFullSlow,
+                    Bitmap = full,
+                    Metadata = meta,
+                    Source = DecodeSource.LibRawFullSlow,
                     ElapsedMs = sw.Elapsed.TotalMilliseconds
                 };
             }

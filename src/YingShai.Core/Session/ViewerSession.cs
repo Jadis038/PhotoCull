@@ -80,11 +80,11 @@ public sealed class ViewerSession : IDisposable
         Marks.UndoChanged += (_, _) => CountsChanged?.Invoke(this, EventArgs.Empty);
     }
 
-    /// <summary>并发探测：网络盘/可移动盘 2，其余默认 4；用户设置优先。</summary>
+    /// <summary>并发探测：网络盘/可移动盘 2，其余默认 6（缩略图主要是 IO+轻解码，6 比较均衡）；用户设置优先。</summary>
     private int ResolveConcurrency()
     {
         if (Settings.DecodeConcurrency > 0) return Settings.DecodeConcurrency;
-        return 4;
+        return 6;
     }
 
     // —————————— 打开文件夹 ——————————

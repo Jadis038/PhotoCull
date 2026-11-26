@@ -1,0 +1,15 @@
+﻿stage,metric,value,unit,note
+enumerate,打开文件夹→文件名列表可见,13.2,ms,2526 个文件
+first_screen,首屏 20 张缩略图,405.7,ms,20 张
+switch_first,单击切图（首次）P50,45.1,ms,样本 10
+switch_first,单击切图（首次）P95,60.5,ms,
+switch_cached,单击切图（缓存命中）P50,0.0,ms,样本 10
+switch_cached,单击切图（缓存命中）P95,0.1,ms,
+full_decode,100% 全解（LIN_6092.NEF）,182.8,ms,8256×5504
+warm_all,全量缩略图预热总耗时,26.4,s,2526 张（200 张一批）
+warm_all,折算 2000 张耗时,20.9,s,按 2526 张外推
+warm_all,预热期间工作集峰值,562.3,MB,GC 后 550 MB
+cache,缓存命中率,1.2,%,命中 30，解码 2536
+decode,单张解码 P50,38.6,ms,样本 2536
+decode,单张解码 P95,60.1,ms,
+memory,进程内存峰值,667.4,MB,当前 550 MB
