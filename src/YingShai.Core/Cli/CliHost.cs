@@ -6,7 +6,9 @@ namespace YingShai.Core.Cli;
 /// <summary>命令行入口的统一分发（--selftest / --bench / --version / --help）。</summary>
 public static class CliHost
 {
-    public const string Version = "1.0.0";
+    /// <summary>程序版本（跟随程序集版本，避免两处手改不一致）。</summary>
+    public static string Version =>
+        (typeof(CliHost).Assembly.GetName().Version is { } v ? v.ToString(3) : "1.0.0");
 
     [DllImport("kernel32.dll", SetLastError = true)]
     private static extern bool AttachConsole(int dwProcessId);

@@ -1,3 +1,4 @@
+﻿using System.Security.Cryptography;
 using System.Windows;
 using YingShai.Core;
 using YingShai.Core.Index;
@@ -162,6 +163,112 @@ public static class AppController
                     string markedPng = Path.Combine(Path.GetDirectoryName(outPng)!, Path.GetFileNameWithoutExtension(outPng) + "_marked.png");
                     win.RenderToPng(markedPng);
                     lines.Add($"已渲染（单击选中+标记后）：{markedPng}");
+                }
+
+                if (args.Contains("--real-click-test") && _session != null && _vm != null)
+                {
+                    win.Activate();
+                    await Task.Delay(300);
+
+                    // ——— 1) 单击缩略图 → 上方查看（真实路由事件，走 OnThumbPreviewMouseDown 处理链）———
+                    var target = _session.Items.Count > 4 ? _session.Items[4] : _session.Items[^1];
+                    var before = _vm.Current;
+                    bool raised = win.RaiseThumbPreviewDown(target);
+                    var clickSw = System.Diagnostics.Stopwatch.StartNew();
+                    for (int i = 0; i < 160 && (_vm.Current != target || _vm.LargeImage == null); i++)
+                        await Task.Delay(50);
+                    clickSw.Stop();
+                    bool clickOk = raised && _vm.Current == target && _vm.LargeImage != null;
+                    lines.Add($"单击缩略图（路由事件）：{before?.Name} → {_vm.Current?.Name}，容器找到={raised}，大图就绪={_vm.LargeImage != null}，耗时 {clickSw.ElapsedMilliseconds} ms → {(clickOk ? "通过" : "失败")}");
+                    if (!clickOk) exitCode = 1;
+
+                    // ——— 1b) 真实鼠标注入点击另一张，端到端验证（鼠标捕获不卡住时才有效）———
+                    var target2 = _session.Items.Count > 2 ? _session.Items[2] : _session.Items[0];
+                    var screenPos2 = win.GetThumbItemCenterOnScreen(target2);
+                    if (screenPos2 != null)
+                    {
+                        MouseInput.Click((int)screenPos2.Value.X, (int)screenPos2.Value.Y);
+                        for (int i = 0; i < 120 && _vm.Current != target2; i++) await Task.Delay(50);
+                        bool realOk = _vm.Current == target2 && _vm.LargeImage != null;
+                        lines.Add($"真实鼠标点击：目标 {target2.Name}（屏幕 {screenPos2.Value.X:F0},{screenPos2.Value.Y:F0}）→ 当前项={_vm.Current?.Name}，大图就绪={_vm.LargeImage != null} → {(realOk ? "通过" : "失败")}");
+                        if (!realOk) exitCode = 1;
+                    }
+
+                    // ——— 2) 滚轮规则（Photoshop 手感）：Alt 缩放 / Ctrl 左右 / 滚轮上下 ———
+                    if (_vm.LargeImage != null)
+                    {
+                        var centerPos = new Point(win.GetImageAreaRect().Width / 2, win.GetImageAreaRect().Height / 2);
+                        win.ResetFit();
+                        await Task.Delay(120);
+                        var s0 = win.ZoomState;
+
+                        win.ApplyWheel(centerPos, -120, alt: false, ctrl: false);   // 滚轮向下
+                        var s1 = win.ZoomState;
+                        bool wheelPanY = Math.Abs(s1.Tx - s0.Tx) < 0.5 && Math.Abs(s1.Ty - s0.Ty) > 1;
+                        lines.Add($"滚轮（无修饰）→ 上下平移={wheelPanY}  Ty {s0.Ty:F0}→{s1.Ty:F0}（X 不变={Math.Abs(s1.Tx - s0.Tx) < 0.5}）");
+                        if (!wheelPanY) exitCode = 1;
+
+                        win.ApplyWheel(centerPos, -120, alt: false, ctrl: true);    // Ctrl+滚轮
+                        var s2 = win.ZoomState;
+                        bool wheelPanX = Math.Abs(s2.Tx - s1.Tx) > 1 && Math.Abs(s2.Scale - s1.Scale) < 0.001;
+                        lines.Add($"Ctrl+滚轮 → 左右平移={wheelPanX}  Tx {s1.Tx:F0}→{s2.Tx:F0}（缩放不变={Math.Abs(s2.Scale - s1.Scale) < 0.001}）");
+                        if (!wheelPanX) exitCode = 1;
+
+                        win.ApplyWheel(centerPos, 120, alt: true, ctrl: false);     // Alt+滚轮
+                        var s3 = win.ZoomState;
+                        bool wheelZoom = s3.Scale > s2.Scale + 0.01;
+                        lines.Add($"Alt+滚轮 → 缩放={wheelZoom}  {s2.Scale:F3}→{s3.Scale:F3}");
+                        if (!wheelZoom) exitCode = 1;
+
+                        // ——— 3) 双击：适应窗口 → 100% → 适应窗口 ———
+                        win.ResetFit();
+                        await Task.Delay(120);
+                        var z1 = await win.TestDoubleClickZoomAsync();
+                        bool toActual = z1.Text == "100%" && Math.Abs(z1.Scale - 1.0) < 0.001;
+                        lines.Add($"双击大图 → 100%：{toActual}（{z1.Text}，scale={z1.Scale:F3}，原图 {_vm.FullImage?.PixelWidth ?? 0}×{_vm.FullImage?.PixelHeight ?? 0}）");
+                        if (!toActual) exitCode = 1;
+
+                        // 在 100% 状态下截一张图作为证据
+                        await Task.Delay(200);
+                        string zoomPng = Path.Combine(Path.GetDirectoryName(outPng)!, Path.GetFileNameWithoutExtension(outPng) + "_zoom100.png");
+                        win.RenderToPng(zoomPng);
+                        lines.Add($"已渲染（100% 断言时）：{zoomPng}");
+                        lines.Add($"100% 布局：{win.LayoutDebug}");
+                        lines.Add($"100% 时大图区有效像素占比：{win.MeasureImageAreaBrightness():F1}%（应显著大于 0，证明大图真的画出来了）");
+                        if (win.MeasureImageAreaBrightness() < 2.0)
+                        {
+                            lines.Add("100% 大图区几乎全黑 → 视口裁剪渲染失败");
+                            exitCode = 1;
+                        }
+
+                        // 在 100% 状态下平移一大步，截图应明显变化（证明画布真的在动）
+                        string beforePanHash = Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(zoomPng)))[..12];
+                        win.PanForTest(-420, -260);
+                        await Task.Delay(200);
+                        string panPng = Path.ChangeExtension(zoomPng, null) + "_pan.png";
+                        win.RenderToPng(panPng);
+                        string afterPanHash = Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(panPng)))[..12];
+                        lines.Add($"100% 平移后：画面变化={beforePanHash != afterPanHash}（{beforePanHash} → {afterPanHash}），布局：{win.LayoutDebug}");
+                        if (beforePanHash == afterPanHash)
+                        {
+                            lines.Add("100% 平移后画面没有变化 → 平移没生效");
+                            exitCode = 1;
+                        }
+
+                        var z2 = await win.TestDoubleClickZoomAsync();
+                        bool backToFit = z2.Text == "适应窗口" && z2.Scale < 1.0;
+                        lines.Add($"再双击大图 → 适应窗口：{backToFit}（{z2.Text}，scale={z2.Scale:F3}）");
+                        if (!backToFit) exitCode = 1;
+
+                        // 真实注入滚轮（有桌面会话时生效；无桌面时会安静地无效，仅作参考）
+                        var screenPos = win.GetImageAreaCenterOnScreen();
+                        var sz0 = win.ZoomState;
+                        MouseInput.Wheel((int)screenPos.X, (int)screenPos.Y, -1);
+                        await Task.Delay(200);
+                        var sz1 = win.ZoomState;
+                        bool injectedWheel = Math.Abs(sz1.Ty - sz0.Ty) > 1;
+                        lines.Add($"（参考）真实滚轮注入：Ty {sz0.Ty:F0}→{sz1.Ty:F0}，{(injectedWheel ? "生效" : "本机未生效（无交互桌面）")}");
+                    }
                 }
 
                 if (args.Contains("--mark-demo") && _session != null && _vm != null)

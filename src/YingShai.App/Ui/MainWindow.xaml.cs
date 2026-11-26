@@ -1,4 +1,4 @@
-using System.Windows;
+﻿using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
@@ -21,9 +21,13 @@ public partial class MainWindow : Window
     private ViewerSession Session => _vm.Session;
 
     private ZoomMode _mode = ZoomMode.Fit;
-    private double _freeScale = 1.0;
+    private double _viewScale = 1.0;          // 虚拟画布缩放
+    private double _viewTx, _viewTy;           // 整图左上角在屏幕上的位置（虚拟画布平移）
+    private Int32Rect _cropRect = Int32Rect.Empty;  // 当前视口裁剪矩形（整图显示时为空）
+    private const double MaxDirectDisplayPixels = 4000;  // 超过这个显示尺寸就必须走视口裁剪
     private CancellationTokenSource? _imageCts;
     private bool _panning;
+    private bool _panArmed;
     private Point _panStart;
     private Vector _panOrigin;
     private readonly DispatcherTimer _priorityTimer;
@@ -222,14 +226,10 @@ public partial class MainWindow : Window
             if (preview != null)
             {
                 _vm.LargeImage = preview;
-                if (_mode == ZoomMode.Fit)
-                {
-                    // 布局可能还没跑完（ActualWidth 还是 0），延后到布局结束再适配一次
-                    ApplyFit();
-                    _ = Dispatcher.BeginInvoke(new Action(() => { if (_mode == ZoomMode.Fit) ApplyFit(); }),
+                // 切图后回到适应窗口，避免上一张的缩放状态套到新图上
+                ApplyFit();
+                _ = Dispatcher.BeginInvoke(new Action(() => { if (_mode == ZoomMode.Fit) ApplyFit(); }),
                         DispatcherPriority.Loaded);
-                }
-                else ApplyFree();
             }
             else
             {
@@ -308,12 +308,11 @@ public partial class MainWindow : Window
         double scale = Math.Min(availW / Math.Max(1, img.PixelWidth), availH / Math.Max(1, img.PixelHeight));
         scale = Math.Min(scale, 1.0);
         _mode = ZoomMode.Fit;
-        _freeScale = scale;
-        ImgScale.ScaleX = scale;
-        ImgScale.ScaleY = scale;
-        ImgTranslate.X = (availW - img.PixelWidth * scale) / 2;
-        ImgTranslate.Y = (availH - img.PixelHeight * scale) / 2;
+        _viewScale = scale;
+        _viewTx = (availW - img.PixelWidth * scale) / 2;
+        _viewTy = (availH - img.PixelHeight * scale) / 2;
         _vm.ZoomText = "适应窗口";
+        ApplyView();
     }
 
     private void ApplyActual()
@@ -321,88 +320,244 @@ public partial class MainWindow : Window
         var img = _vm.LargeImage;
         if (img == null) return;
         _mode = ZoomMode.Actual;
-        _freeScale = 1.0;
-        ImgScale.ScaleX = 1;
-        ImgScale.ScaleY = 1;
-        ImgTranslate.X = (ImageArea.ActualWidth - img.PixelWidth) / 2;
-        ImgTranslate.Y = (ImageArea.ActualHeight - img.PixelHeight) / 2;
+        _viewScale = 1.0;
+        _viewTx = (ImageArea.ActualWidth - img.PixelWidth) / 2;
+        _viewTy = (ImageArea.ActualHeight - img.PixelHeight) / 2;
         _vm.ZoomText = "100%";
+        ApplyView();
     }
 
     private void ApplyFree()
     {
-        var img = _vm.LargeImage;
-        if (img == null) return;
-        ImgScale.ScaleX = _freeScale;
-        ImgScale.ScaleY = _freeScale;
-        _vm.ZoomText = $"自由缩放 {_freeScale * 100:F0}%";
+        if (_vm.LargeImage == null) return;
+        _vm.ZoomText = $"自由缩放 {_viewScale * 100:F0}%";
+        ApplyView();
+    }
+
+    /// <summary>
+    /// 把"虚拟画布"（_viewScale/_viewTx/_viewTy 描述整张图在屏幕上的位置）落到 WPF 元素上。
+    ///
+    /// 关键点：WPF 对"一个 8000+ 像素的元素 + 负向平移"这条渲染路径会直接画出空白（实测
+    /// 8191×5463 的位图平移 -1846px 时有效像素 0%），所以大图放大时不能把整图元素塞进窗口，
+    /// 而是按当前视口裁一块（CroppedBitmap）来显示，并相应补偿平移量。
+    /// </summary>
+    private void ApplyView()
+    {
+        var src = _vm.LargeImage;
+        if (src == null) return;
+        double s = _viewScale;
+        ImgScale.ScaleX = s;
+        ImgScale.ScaleY = s;
+
+        double dispW = src.PixelWidth * s;
+        double dispH = src.PixelHeight * s;
+        // 显示尺寸不大时直接用整张图（截图/小图/缩放到很小的情况）
+        if (dispW <= MaxDirectDisplayPixels && dispH <= MaxDirectDisplayPixels)
+        {
+            if (!ReferenceEquals(MainImage.Source, src)) MainImage.Source = src;
+            // 关键：显式给元素尺寸（Stretch=Fill + 宽高=位图像素），否则父容器会把元素限制成视口大小，
+            // Stretch=None/受限尺寸下只会画出源图左上角一块，平移就"看不到图"。
+            MainImage.Width = src.PixelWidth;
+            MainImage.Height = src.PixelHeight;
+            _cropRect = Int32Rect.Empty;
+            ImgTranslate.X = _viewTx;
+            ImgTranslate.Y = _viewTy;
+            return;
+        }
+
+        // 视口在图像像素坐标里的范围（外扩一圈，减少拖动时反复裁剪）
+        double viewW = Math.Max(1, ImageArea.ActualWidth);
+        double viewH = Math.Max(1, ImageArea.ActualHeight);
+        double ix = -_viewTx / s;
+        double iy = -_viewTy / s;
+        const int margin = 400;
+        int cx = (int)Math.Max(0, Math.Floor(ix) - margin);
+        int cy = (int)Math.Max(0, Math.Floor(iy) - margin);
+        int right = (int)Math.Min(src.PixelWidth, Math.Ceiling(ix + viewW / s) + margin);
+        int bottom = (int)Math.Min(src.PixelHeight, Math.Ceiling(iy + viewH / s) + margin);
+        int cw = Math.Max(1, right - cx);
+        int ch = Math.Max(1, bottom - cy);
+        var rect = new Int32Rect(cx, cy, cw, ch);
+        if (rect != _cropRect || MainImage.Source == null)
+        {
+            try
+            {
+                var crop = new CroppedBitmap(src, rect);
+                crop.Freeze();
+                MainImage.Source = crop;
+                _cropRect = rect;
+            }
+            catch (Exception ex)
+            {
+                YingShai.Core.Util.AppLog.Error("视口裁剪失败，退回整图显示", ex);
+                MainImage.Source = src;
+                _cropRect = Int32Rect.Empty;
+                ImgTranslate.X = _viewTx;
+                ImgTranslate.Y = _viewTy;
+                return;
+            }
+        }
+        // 裁剪图的左上角在屏幕上的位置 = 整图平移 + 裁剪原点×缩放
+        MainImage.Width = cw;
+        MainImage.Height = ch;
+        ImgTranslate.X = _viewTx + cx * s;
+        ImgTranslate.Y = _viewTy + cy * s;
     }
 
     private void ZoomAt(Point mouse, double factor)
     {
         var img = _vm.LargeImage;
         if (img == null) return;
-        double oldScale = ImgScale.ScaleX;
+        double oldScale = _viewScale;
         double newScale = Math.Clamp(oldScale * factor, 0.02, 12.0);
         if (Math.Abs(newScale - oldScale) < 1e-6) return;
         // 以鼠标位置为中心缩放
-        double imgX = (mouse.X - ImgTranslate.X) / oldScale;
-        double imgY = (mouse.Y - ImgTranslate.Y) / oldScale;
+        double imgX = (mouse.X - _viewTx) / oldScale;
+        double imgY = (mouse.Y - _viewTy) / oldScale;
         _mode = ZoomMode.Free;
-        _freeScale = newScale;
-        ImgScale.ScaleX = newScale;
-        ImgScale.ScaleY = newScale;
-        ImgTranslate.X = mouse.X - imgX * newScale;
-        ImgTranslate.Y = mouse.Y - imgY * newScale;
+        _viewScale = newScale;
+        _viewTx = mouse.X - imgX * newScale;
+        _viewTy = mouse.Y - imgY * newScale;
         _vm.ZoomText = $"自由缩放 {newScale * 100:F0}%";
+        ApplyView();
     }
 
     private void OnImageWheel(object sender, MouseWheelEventArgs e)
     {
-        var pos = e.GetPosition(ImageArea);
-        ZoomAt(pos, e.Delta > 0 ? 1.15 : 1 / 1.15);
+        bool alt = (Keyboard.Modifiers & ModifierKeys.Alt) != 0;
+        bool ctrl = (Keyboard.Modifiers & ModifierKeys.Control) != 0;
+        ApplyWheel(e.GetPosition(ImageArea), e.Delta, alt, ctrl);
         e.Handled = true;
+    }
+
+    /// <summary>
+    /// 滚轮规则（Photoshop 手感）：Alt 缩放、Ctrl 左右平移、无修饰上下平移。
+    /// 抽成独立方法，验收脚本可以直接用确定的参数调它（注入真实滚轮在无桌面环境下不可靠）。
+    /// </summary>
+    public void ApplyWheel(Point pos, int delta, bool alt, bool ctrl)
+    {
+        int notches = delta / 120;
+        if (notches == 0) notches = Math.Sign(delta);
+        const double panStep = 90;
+        if (alt)
+        {
+            ZoomAt(pos, Math.Pow(1.15, notches));
+        }
+        else if (ctrl)
+        {
+            PanBy(notches * panStep, 0);
+        }
+        else
+        {
+            PanBy(0, notches * panStep);
+        }
+    }
+
+    /// <summary>平移画布；在「适应窗口」状态下平移会切到自由模式（避免下一帧被重新适配覆盖）。</summary>
+    private void PanBy(double dx, double dy)
+    {
+        if (_vm.LargeImage == null) return;
+        if (_mode == ZoomMode.Fit) _mode = ZoomMode.Free;   // 100% 下平移仍然是 100%，不要切走
+        _viewTx += dx;
+        _viewTy += dy;
+        _vm.ZoomText = $"自由缩放 {_viewScale * 100:F0}%";
+        ApplyView();
     }
 
     private void OnImageMouseDown(object sender, MouseButtonEventArgs e)
     {
         if (e.ClickCount == 2)
         {
-            // 双击大图 = 适应窗口（不做标记，防误触）
-            ApplyFit();
+            // 双击大图 = 在「适应窗口」和「100%（像素 1:1）」之间切换（不做标记，防误触）
             e.Handled = true;
+            _ = ToggleZoomAsync(e.GetPosition(ImageArea));
             return;
         }
-        _panning = true;
+        // 注意：这里先不 CaptureMouse——只有真的开始拖动才捕获。
+        // 否则一旦捕获没释放（例如按下后窗口失焦），缩略图条的点击和滚轮会被大图区整个吞掉。
+        _panArmed = true;
         _panStart = e.GetPosition(ImageArea);
-        _panOrigin = new Vector(ImgTranslate.X, ImgTranslate.Y);
-        ImageArea.CaptureMouse();
-        ImageArea.Cursor = Cursors.SizeAll;
+        _panOrigin = new Vector(_viewTx, _viewTy);
     }
 
     private void OnImageMouseMove(object sender, MouseEventArgs e)
     {
+        if (_panArmed && !_panning && e.LeftButton == MouseButtonState.Pressed)
+        {
+            var p0 = e.GetPosition(ImageArea);
+            if (Math.Abs(p0.X - _panStart.X) + Math.Abs(p0.Y - _panStart.Y) > 3)
+            {
+                _panning = true;
+                ImageArea.CaptureMouse();
+                ImageArea.Cursor = Cursors.SizeAll;
+            }
+        }
         if (!_panning) return;
         var p = e.GetPosition(ImageArea);
-        ImgTranslate.X = _panOrigin.X + (p.X - _panStart.X);
-        ImgTranslate.Y = _panOrigin.Y + (p.Y - _panStart.Y);
+        _viewTx = _panOrigin.X + (p.X - _panStart.X);
+        _viewTy = _panOrigin.Y + (p.Y - _panStart.Y);
         if (_mode == ZoomMode.Fit) _mode = ZoomMode.Free;
+        ApplyView();
     }
 
     private void OnImageMouseUp(object sender, MouseButtonEventArgs e)
     {
+        _panArmed = false;
         if (!_panning) return;
         _panning = false;
         ImageArea.ReleaseMouseCapture();
         ImageArea.Cursor = Cursors.Arrow;
     }
 
+    /// <summary>捕获丢失（窗口失焦等）时复位拖动状态，避免卡在"一直拖动"。</summary>
+    private void OnImageLostCapture(object sender, MouseEventArgs e)
+    {
+        _panning = false;
+        _panArmed = false;
+        ImageArea.Cursor = Cursors.Arrow;
+    }
+
     private void OnImageAreaSizeChanged(object sender, SizeChangedEventArgs e)
     {
         if (_mode == ZoomMode.Fit) ApplyFit();
+        else ApplyView();   // 视口大小变了，裁剪范围也要跟着变
     }
 
     private void OnZoomFit(object sender, RoutedEventArgs e) => ApplyFit();
+
+    /// <summary>
+    /// 双击切换：100%（像素 1:1，必要时后台全解原图）↔ 适应窗口。
+    /// 放大时以双击点为锚，让光标下那块内容留在光标位置。
+    /// </summary>
+    private async Task ToggleZoomAsync(Point anchor)
+    {
+        if (_vm.LargeImage == null) return;
+        if (_mode == ZoomMode.Actual)
+        {
+            ApplyFit();
+            return;
+        }
+
+        // 记录双击点落在图的哪个相对位置（0~1），用于放大后把该点锚回鼠标处
+        var cur = _vm.LargeImage;
+        double shownW = cur.PixelWidth * _viewScale;
+        double shownH = cur.PixelHeight * _viewScale;
+        double fracX = shownW > 0 ? Math.Clamp((anchor.X - _viewTx) / shownW, 0, 1) : 0.5;
+        double fracY = shownH > 0 ? Math.Clamp((anchor.Y - _viewTy) / shownH, 0, 1) : 0.5;
+
+        if (_vm.FullImage == null) await EnsureFullResAsync();
+        var full = _vm.FullImage;
+        if (full == null) { ApplyFit(); return; }   // 全解失败就退回适应窗口
+
+        _vm.LargeImage = full;
+        _mode = ZoomMode.Actual;
+        _viewScale = 1.0;
+        _viewTx = anchor.X - fracX * full.PixelWidth;
+        _viewTy = anchor.Y - fracY * full.PixelHeight;
+        _vm.ZoomText = "100%";
+        _vm.StatusText = $"100% 像素 1:1（{full.PixelWidth}×{full.PixelHeight}），再双击回到适应窗口";
+        ApplyView();
+    }
 
     private async void OnZoomActual(object sender, RoutedEventArgs e)
     {
@@ -452,7 +607,38 @@ public partial class MainWindow : Window
     {
         if (e.AddedItems.Count == 0) return;
         if (e.AddedItems[0] is ImageItem item && !ReferenceEquals(Session.Current, item))
-            Session.SetCurrent(item);   // CurrentChanged → ViewModel/大图自动跟着切
+        {
+            Session.SetCurrent(item);
+            YingShai.Core.Util.AppLog.Info($"单击缩略图：{item.Name}（SelectionChanged）");
+        }
+    }
+
+    /// <summary>
+    /// 兜底：鼠标按下就先定位到被点中的缩略图，不依赖 ListBox 的选中机制
+    /// （个别情况下（容器回收/焦点设置）选中事件可能不触发，这里直接看命中元素）。
+    /// </summary>
+    private void OnThumbPreviewMouseDown(object sender, MouseButtonEventArgs e)
+    {
+        if (e.ChangedButton != MouseButton.Left) return;
+        var item = ResolveThumbItem(e.OriginalSource as DependencyObject);
+        if (item == null)
+        {
+            YingShai.Core.Util.AppLog.Info("缩略图点击：未命中条目（可能点在滚动条/空白）");
+            return;
+        }
+        if (ReferenceEquals(Session.Current, item)) return;
+        Session.SetCurrent(item);
+        YingShai.Core.Util.AppLog.Info($"单击缩略图：{item.Name}（PreviewMouseDown 兜底）");
+    }
+
+    private static ImageItem? ResolveThumbItem(DependencyObject? d)
+    {
+        while (d != null)
+        {
+            if (d is ListBoxItem lbi && lbi.DataContext is ImageItem it) return it;
+            d = VisualTreeHelper.GetParent(d);
+        }
+        return null;
     }
 
     private void OnThumbDoubleClick(object sender, MouseButtonEventArgs e)
@@ -702,9 +888,10 @@ public partial class MainWindow : Window
 
     public string LayoutDebug =>
         $"ImageArea={ImageArea.ActualWidth:F0}x{ImageArea.ActualHeight:F0} " +
-        $"img={(int)(_vm.LargeImage?.PixelWidth ?? 0)}x{(int)(_vm.LargeImage?.PixelHeight ?? 0)} " +
+        $"src={(int)(_vm.LargeImage?.PixelWidth ?? 0)}x{(int)(_vm.LargeImage?.PixelHeight ?? 0)} " +
+        $"elem={MainImage.Width:F0}x{MainImage.Height:F0} render={MainImage.RenderSize.Width:F0}x{MainImage.RenderSize.Height:F0} " +
         $"scale={ImgScale.ScaleX:F3} tx={ImgTranslate.X:F1} ty={ImgTranslate.Y:F1} " +
-        $"render={MainImage.RenderSize.Width:F0}x{MainImage.RenderSize.Height:F0}";
+        $"crop={(Int32Rect.Empty == _cropRect ? "无" : $"{_cropRect.X},{_cropRect.Y} {_cropRect.Width}x{_cropRect.Height}")}";
 
     /// <summary>验收：模拟单击缩略图（与鼠标单击同一条选中路径），等大图切换后返回结果。</summary>
     public async Task<(bool CurrentOk, bool ImageOk, double Ms)> SimulateThumbClickAsync(ImageItem item)
@@ -718,6 +905,93 @@ public partial class MainWindow : Window
         sw.Stop();
         return (_vm.Current == item, _vm.LargeImage != null && _vm.Current == item, sw.Elapsed.TotalMilliseconds);
     }
+
+    /// <summary>缩略图在屏幕上的中心点（物理像素），供真实鼠标点击验收用。</summary>
+    public (double X, double Y)? GetThumbItemCenterOnScreen(ImageItem item)
+    {
+        ThumbList.ScrollIntoView(item);
+        ThumbList.UpdateLayout();
+        if (ThumbList.ItemContainerGenerator.ContainerFromItem(item) is not ListBoxItem container) return null;
+        var p = container.PointToScreen(new Point(container.ActualWidth / 2, container.ActualHeight / 2));
+        return (p.X, p.Y);
+    }
+
+    /// <summary>大图区域尺寸（验收用）。</summary>
+    public Size GetImageAreaRect() => new(ImageArea.ActualWidth, ImageArea.ActualHeight);
+
+    /// <summary>验收：把大图区渲染出来，统计"明显亮于背景"的像素占比（判断大图到底有没有画出来）。</summary>
+    public double MeasureImageAreaBrightness()
+    {
+        int w = (int)Math.Max(1, ImageArea.ActualWidth), h = (int)Math.Max(1, ImageArea.ActualHeight);
+        var rtb = new RenderTargetBitmap(w, h, 96, 96, PixelFormats.Pbgra32);
+        rtb.Render(ImageArea);
+        int stride = w * 4;
+        var buf = new byte[stride * h];
+        rtb.CopyPixels(buf, stride, 0);
+        int bright = 0;
+        for (int i = 0; i < buf.Length; i += 4)
+        {
+            int b = buf[i], g = buf[i + 1], r = buf[i + 2];
+            if (r + g + b > 120) bright++;   // 背景 #101014 三通道和只有 0x38=56
+        }
+        return 100.0 * bright / (w * h);
+    }
+
+
+    /// <summary>大图区域中心的屏幕坐标（物理像素）。</summary>
+    public (double X, double Y) GetImageAreaCenterOnScreen()
+    {
+        var p = ImageArea.PointToScreen(new Point(ImageArea.ActualWidth / 2, ImageArea.ActualHeight / 2));
+        return (p.X, p.Y);
+    }
+
+    /// <summary>当前缩放/平移状态（验收断言用）。</summary>
+    public (string Text, double Scale, double Tx, double Ty) ZoomState
+        => (_vm.ZoomText, _viewScale, _viewTx, _viewTy);
+
+    /// <summary>重置为适应窗口（验收用）。</summary>
+    public void ResetFit() => ApplyFit();
+
+    /// <summary>验收：在 100% 状态下平移，用来验证"平移动的是画布而不是被裁死的画面"。</summary>
+    public void PanForTest(double dx, double dy) => PanBy(dx, dy);
+
+    /// <summary>
+    /// 验收：在缩略图容器上真正抛一次 PreviewMouseLeftButtonDown 路由事件，
+    /// 走的是和鼠标单击完全相同的处理链（OnThumbPreviewMouseDown → 命中元素 → 切图）。
+    /// </summary>
+    public bool RaiseThumbPreviewDown(ImageItem item)
+    {
+        ThumbList.ScrollIntoView(item);
+        ThumbList.UpdateLayout();
+        // 虚拟化回收时容器可能刚被复用、DataContext 还没换成目标项，要等它绑定好再抛事件
+        for (int attempt = 0; attempt < 20; attempt++)
+        {
+            if (ThumbList.ItemContainerGenerator.ContainerFromItem(item) is ListBoxItem c
+                && ReferenceEquals(c.DataContext, item))
+            {
+                // 从 ListBox 发起（真实鼠标点击也是这条路由：Window → ListBox → 条目），
+                // Source 指向条目容器，等价于"点在条目 c 上"
+                var args = new MouseButtonEventArgs(Mouse.PrimaryDevice, Environment.TickCount, MouseButton.Left)
+                {
+                    RoutedEvent = UIElement.PreviewMouseLeftButtonDownEvent,
+                    Source = c
+                };
+                ThumbList.RaiseEvent(args);
+                return true;
+            }
+            Dispatcher.Invoke(() => { }, DispatcherPriority.Loaded);
+            ThumbList.UpdateLayout();
+        }
+        return false;
+    }
+
+    /// <summary>验收：模拟在大图中央双击，返回切换后的缩放状态。</summary>
+    public async Task<(string Text, double Scale)> TestDoubleClickZoomAsync()
+    {
+        await ToggleZoomAsync(new Point(ImageArea.ActualWidth / 2, ImageArea.ActualHeight / 2));
+        return (_vm.ZoomText, ImgScale.ScaleX);
+    }
+
 
     /// <summary>验收用：切到 100%，触发后台全解并返回耗时与结果。</summary>
     public async Task<(bool Ok, double Ms, int W, int H)> TestFullResAsync()

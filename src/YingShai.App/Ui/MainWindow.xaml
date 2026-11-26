@@ -137,17 +137,21 @@
         <Grid Grid.Row="1" Grid.Column="0" x:Name="ImageArea" Background="#101014" ClipToBounds="True"
               MouseWheel="OnImageWheel" MouseLeftButtonDown="OnImageMouseDown"
               MouseLeftButtonUp="OnImageMouseUp" MouseMove="OnImageMouseMove"
+              LostMouseCapture="OnImageLostCapture"
               SizeChanged="OnImageAreaSizeChanged">
-            <Image x:Name="MainImage" Stretch="None" HorizontalAlignment="Left" VerticalAlignment="Top"
-                   RenderOptions.BitmapScalingMode="HighQuality" RenderTransformOrigin="0,0"
-                   Source="{Binding LargeImage}">
-                <Image.RenderTransform>
-                    <TransformGroup>
-                        <ScaleTransform x:Name="ImgScale" ScaleX="1" ScaleY="1"/>
-                        <TranslateTransform x:Name="ImgTranslate" X="0" Y="0"/>
-                    </TransformGroup>
-                </Image.RenderTransform>
-            </Image>
+            <!-- 必须用 Canvas 承载大图：Grid 会给子元素施加布局裁剪，8191px 的图只有左上角一块能画出来 -->
+            <Canvas x:Name="ImageHost" ClipToBounds="False">
+                <Image x:Name="MainImage" Stretch="Fill" HorizontalAlignment="Left" VerticalAlignment="Top"
+                       RenderOptions.BitmapScalingMode="HighQuality" RenderTransformOrigin="0,0"
+                       Source="{Binding LargeImage}">
+                    <Image.RenderTransform>
+                        <TransformGroup>
+                            <ScaleTransform x:Name="ImgScale" ScaleX="1" ScaleY="1"/>
+                            <TranslateTransform x:Name="ImgTranslate" X="0" Y="0"/>
+                        </TransformGroup>
+                    </Image.RenderTransform>
+                </Image>
+            </Canvas>
 
             <TextBlock x:Name="EmptyHint" HorizontalAlignment="Center" VerticalAlignment="Center"
                        Foreground="#6A6A78" FontSize="15" TextAlignment="Center"
@@ -224,6 +228,7 @@
                      ScrollViewer.CanContentScroll="True"
                      ItemContainerStyle="{StaticResource ThumbItem}"
                      SelectionChanged="OnThumbSelectionChanged"
+                     PreviewMouseLeftButtonDown="OnThumbPreviewMouseDown"
                      VirtualizingPanel.IsVirtualizing="True"
                      VirtualizingPanel.VirtualizationMode="Recycling"
                      VirtualizingPanel.ScrollUnit="Pixel"

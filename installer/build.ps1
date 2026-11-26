@@ -1,4 +1,4 @@
-# 影·筛 —— MSI 打包（WiX v4，每用户安装，免 UAC）
+﻿# 影·筛 —— MSI 打包（WiX v4，每用户安装，免 UAC）
 # 用法：Get-Content installer/build.ps1 -Raw -Encoding UTF8 | Invoke-Expression
 #      （本机 PowerShell 执行策略会拦截 .ps1 直接执行，故统一用 Invoke-Expression 加载）
 
@@ -7,7 +7,7 @@ $Repo    = if ($global:REPO) { $global:REPO } else { (Resolve-Path (Join-Path $P
 $Dist    = Join-Path $Repo 'dist\app'
 $OutDir  = Join-Path $Repo 'dist'
 $WixExe  = 'D:\DSH工作区\toolchain\wix\wix.exe'
-$Version = '1.0.0'
+$Version = '1.0.1'
 
 Write-Host "== [1/5] 自包含发布 (net8.0-windows, win-x64) ==" -ForegroundColor Cyan
 if (Test-Path $Dist) { Remove-Item $Dist -Recurse -Force }
