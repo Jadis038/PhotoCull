@@ -38,8 +38,11 @@ final class UpdateChecker {
 
     let repository = "Jadis038/PhotoCull"
     let currentVersion = AppInfo.version
+    private let mirrorPrefix = "https://gh-proxy.com/"
     /// --update-auto：无人值守下载/安装（自动化测试用）
     var autoUpdateMode = false
+    /// --update-mirror：强制走 gh-proxy 镜像（镜像回退测试用）
+    var forceMirrorOnly = false
 
     private let session: URLSession
     private var activeDownloader: UpdateDownloader?
@@ -59,86 +62,70 @@ final class UpdateChecker {
     /// 因此这里默认包含 prerelease。
     func checkForUpdate(includePrerelease: Bool = true,
                         completion: @escaping (Result<UpdateRelease?, Error>) -> Void) {
-        guard let url = URL(string: "https://api.github.com/repos/\(repository)/releases?per_page=30") else {
+        _ = includePrerelease
+        let stamp = Int(Date().timeIntervalSince1970 * 1000)
+        let primary = URL(string: "https://github.com/\(repository)/releases.atom?t=\(stamp)")!
+        let mirror = URL(string: "\(mirrorPrefix)https://github.com/\(repository)/releases.atom")!
+        fetchAtom(urls: [primary, mirror], completion: completion)
+    }
+
+    private func fetchAtom(urls: [URL],
+                           completion: @escaping (Result<UpdateRelease?, Error>) -> Void) {
+        guard let url = urls.first else {
             completion(.failure(UpdateError.invalidResponse))
             return
         }
         var request = URLRequest(url: url)
-        request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
+        // Atom 源没有 API 的 60 次/小时匿名额度限制；query 用于绕过 CDN 缓存。
+        request.cachePolicy = .reloadIgnoringLocalCacheData
+        request.setValue("application/atom+xml", forHTTPHeaderField: "Accept")
         request.setValue("PhotoCull-macOS/\(currentVersion)", forHTTPHeaderField: "User-Agent")
 
         session.dataTask(with: request) { [weak self] data, response, error in
             guard let self else { return }
-            if let error {
-                DispatchQueue.main.async { completion(.failure(error)) }
-                return
-            }
+            let retry = { self.fetchAtom(urls: Array(urls.dropFirst()), completion: completion) }
+            if error != nil { retry(); return }
             guard let http = response as? HTTPURLResponse,
                   (200..<300).contains(http.statusCode),
-                  let data else {
-                DispatchQueue.main.async { completion(.failure(UpdateError.invalidResponse)) }
+                  let data, !data.isEmpty else {
+                retry()
                 return
             }
-            do {
-                let release = try self.parseReleases(data, includePrerelease: includePrerelease)
-                DispatchQueue.main.async { completion(.success(release)) }
-            } catch {
-                DispatchQueue.main.async { completion(.failure(error)) }
+            let parser = AtomReleaseParser()
+            guard parser.parse(data) else {
+                retry()
+                return
             }
+            let release = self.release(from: parser.entries)
+            DispatchQueue.main.async { completion(.success(release)) }
         }.resume()
     }
 
-    private func parseReleases(_ data: Data, includePrerelease: Bool) throws -> UpdateRelease? {
-        guard let list = try JSONSerialization.jsonObject(with: data) as? [[String: Any]] else {
-            throw UpdateError.invalidResponse
-        }
-
-        var candidates: [UpdateRelease] = []
-        for item in list {
-            if item["draft"] as? Bool == true { continue }
-            let prerelease = item["prerelease"] as? Bool ?? false
-            if prerelease && !includePrerelease { continue }
-
-            let tag = item["tag_name"] as? String ?? ""
-            let assets = item["assets"] as? [[String: Any]] ?? []
-            let dmgs = assets.filter { asset in
-                let name = (asset["name"] as? String ?? "").lowercased()
-                return name.hasSuffix(".dmg")
-            }
-            guard !dmgs.isEmpty else { continue }
-            let macDMGs = dmgs.filter { (($0["name"] as? String ?? "").lowercased()).contains("macos") }
-            guard tag.lowercased().contains("macos") || !macDMGs.isEmpty else { continue }
-
-            let asset = macDMGs.first(where: { (($0["name"] as? String ?? "").lowercased()).contains("arm64") })
-                ?? macDMGs.first
-                ?? dmgs.first
-            guard let asset,
-                  let name = asset["name"] as? String,
-                  let urlString = asset["browser_download_url"] as? String,
-                  let downloadURL = URL(string: urlString) else { continue }
-
-            guard let version = version(fromTag: tag) ?? version(fromName: name) else { continue }
-            guard Self.compare(version, currentVersion) == .orderedDescending else { continue }
-
-            let notes = (item["body"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+    private func release(from entries: [AtomReleaseParser.Entry]) -> UpdateRelease? {
+        var best: UpdateRelease?
+        for entry in entries {
+            guard entry.tag.hasPrefix("macos-") else { continue }
+            guard let version = version(fromTag: entry.tag),
+                  Self.compare(version, currentVersion) == .orderedDescending else { continue }
+            let assetName = "PhotoCull-\(version)-macOS-arm64.dmg"
+            guard let downloadURL = URL(string: "https://github.com/\(repository)/releases/download/\(entry.tag)/\(assetName)") else { continue }
             var published: Date?
-            if let dateString = item["published_at"] as? String {
-                published = ISO8601DateFormatter().date(from: dateString)
-            }
-            candidates.append(UpdateRelease(
+            if !entry.updated.isEmpty { published = ISO8601DateFormatter().date(from: entry.updated) }
+            let release = UpdateRelease(
                 version: version,
-                tag: tag,
-                title: item["name"] as? String ?? tag,
-                notes: notes.isEmpty ? "（该版本没有提供更新说明）" : notes,
-                assetName: name,
+                tag: entry.tag,
+                title: entry.title.isEmpty ? entry.tag : entry.title,
+                notes: AtomReleaseParser.plainText(entry.content),
+                assetName: assetName,
                 downloadURL: downloadURL,
                 publishedAt: published,
-                prerelease: prerelease
-            ))
+                prerelease: true
+            )
+            if best == nil || Self.compare(release.version, best!.version) == .orderedDescending {
+                best = release
+            }
         }
-
-        candidates.sort { Self.compare($0.version, $1.version) == .orderedDescending }
-        return candidates.first
+        return best
     }
 
     private func version(fromTag tag: String) -> String? {
@@ -189,9 +176,13 @@ final class UpdateChecker {
             return
         }
         let destination = directory.appendingPathComponent(release.assetName)
+        let mirrorURL = URL(string: "\(mirrorPrefix)\(release.downloadURL.absoluteString)")
+        var urls: [URL] = []
+        if !forceMirrorOnly { urls.append(release.downloadURL) }
+        if let mirrorURL { urls.append(mirrorURL) }
         let downloader = UpdateDownloader()
         activeDownloader = downloader
-        downloader.start(url: release.downloadURL, destination: destination, progress: progress) { [weak self] result in
+        downloader.start(urls: urls, destination: destination, progress: progress) { [weak self] result in
             self?.activeDownloader = nil
             DispatchQueue.main.async { completion(result) }
         }
@@ -351,20 +342,47 @@ private final class UpdateDownloader: NSObject, URLSessionDownloadDelegate {
     private var progress: ((Double) -> Void)?
     private var completion: ((Result<URL, Error>) -> Void)?
     private var session: URLSession?
+    private var urls: [URL] = []
+    private var currentIndex = 0
+    private var currentTask: URLSessionDownloadTask?
     private var finished = false
 
-    func start(url: URL,
+    func start(urls: [URL],
                destination: URL,
                progress: @escaping (Double) -> Void,
                completion: @escaping (Result<URL, Error>) -> Void) {
+        self.urls = urls
         self.destination = destination
         self.progress = progress
         self.completion = completion
         let configuration = URLSessionConfiguration.default
         configuration.timeoutIntervalForRequest = 60
         configuration.timeoutIntervalForResource = 300
+        configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
         session = URLSession(configuration: configuration, delegate: self, delegateQueue: nil)
-        session?.downloadTask(with: url).resume()
+        startCurrent()
+    }
+
+    private func startCurrent() {
+        guard !finished else { return }
+        guard currentIndex < urls.count else {
+            finish(.failure(UpdateError.downloadFailed("直连与镜像均下载失败")))
+            return
+        }
+        let url = urls[currentIndex]
+        let task = session?.downloadTask(with: url)
+        currentTask = task
+        task?.resume()
+    }
+
+    private func advanceOrFinish(_ error: Error) {
+        currentIndex += 1
+        if currentIndex < urls.count {
+            DispatchQueue.main.async { self.progress?(0) }
+            startCurrent()
+        } else {
+            finish(.failure(error))
+        }
     }
 
     func urlSession(_ session: URLSession,
@@ -380,25 +398,39 @@ private final class UpdateDownloader: NSObject, URLSessionDownloadDelegate {
     func urlSession(_ session: URLSession,
                     downloadTask: URLSessionDownloadTask,
                     didFinishDownloadingTo location: URL) {
+        if let http = downloadTask.response as? HTTPURLResponse,
+           !(200..<300).contains(http.statusCode) {
+            advanceOrFinish(UpdateError.downloadFailed("HTTP \(http.statusCode)"))
+            return
+        }
         guard let destination else {
             finish(.failure(UpdateError.downloadFailed("缺少目标路径")))
             return
         }
         do {
-            let directory = destination.deletingLastPathComponent()
-            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            let attributes = try FileManager.default.attributesOfItem(atPath: location.path)
+            let size = (attributes[.size] as? NSNumber)?.int64Value ?? 0
+            guard size > 50_000 else {
+                advanceOrFinish(UpdateError.downloadFailed("下载内容过小（\(size) 字节）"))
+                return
+            }
+            try FileManager.default.createDirectory(at: destination.deletingLastPathComponent(),
+                                                    withIntermediateDirectories: true)
             if FileManager.default.fileExists(atPath: destination.path) {
                 try FileManager.default.removeItem(at: destination)
             }
             try FileManager.default.moveItem(at: location, to: destination)
             finish(.success(destination))
         } catch {
-            finish(.failure(error))
+            advanceOrFinish(error)
         }
     }
 
     func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
-        if let error { finish(.failure(error)) }
+        guard !finished else { return }
+        if let error {
+            advanceOrFinish(error)
+        }
     }
 
     private func finish(_ result: Result<URL, Error>) {
@@ -409,5 +441,90 @@ private final class UpdateDownloader: NSObject, URLSessionDownloadDelegate {
         progress = nil
         session?.invalidateAndCancel()
         session = nil
+    }
+}
+
+// MARK: - Releases Atom 解析
+
+private final class AtomReleaseParser: NSObject, XMLParserDelegate {
+    struct Entry {
+        var tag = ""
+        var title = ""
+        var content = ""
+        var updated = ""
+    }
+
+    private(set) var entries: [Entry] = []
+    private var current: Entry?
+    private var currentElement = ""
+    private var buffer = ""
+
+    func parse(_ data: Data) -> Bool {
+        entries.removeAll()
+        current = nil
+        let parser = XMLParser(data: data)
+        parser.delegate = self
+        return parser.parse()
+    }
+
+    func parser(_ parser: XMLParser, didStartElement elementName: String,
+                namespaceURI: String?, qualifiedName qName: String?,
+                attributes attributeDict: [String: String] = [:]) {
+        if elementName == "entry" {
+            current = Entry()
+        }
+        guard current != nil else { return }
+        currentElement = elementName
+        buffer = ""
+    }
+
+    func parser(_ parser: XMLParser, foundCharacters string: String) {
+        guard current != nil else { return }
+        buffer += string
+    }
+
+    func parser(_ parser: XMLParser, didEndElement elementName: String,
+                namespaceURI: String?, qualifiedName qName: String?) {
+        guard var entry = current else { return }
+        switch elementName {
+        case "id":
+            entry.tag = Self.extractTag(buffer)
+        case "title":
+            entry.title = buffer.trimmingCharacters(in: .whitespacesAndNewlines)
+        case "content":
+            entry.content = buffer
+        case "updated":
+            entry.updated = buffer.trimmingCharacters(in: .whitespacesAndNewlines)
+        case "entry":
+            entries.append(entry)
+            current = nil
+            return
+        default:
+            break
+        }
+        current = entry
+    }
+
+    private static func extractTag(_ id: String) -> String {
+        let marker = "Repository/"
+        guard let range = id.range(of: marker) else { return "" }
+        let rest = id[range.upperBound...]
+        guard let slash = rest.firstIndex(of: "/") else { return "" }
+        return String(rest[rest.index(after: slash)...])
+    }
+
+    static func plainText(_ html: String) -> String {
+        var text = html
+        for tag in ["</p>", "</li>", "</h1>", "</h2>", "</h3>", "<br>", "<br/>", "<br />"] {
+            text = text.replacingOccurrences(of: tag, with: "\n")
+        }
+        text = text.replacingOccurrences(of: "<[^>]+>", with: "", options: .regularExpression)
+        let entities = [
+            "&amp;": "&", "&lt;": "<", "&gt;": ">", "&quot;": "\"", "&#39;": "'",
+            "&nbsp;": " ", "&#x27;": "'"
+        ]
+        for (key, value) in entities { text = text.replacingOccurrences(of: key, with: value) }
+        while text.contains("\n\n\n") { text = text.replacingOccurrences(of: "\n\n\n", with: "\n\n") }
+        return text.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }

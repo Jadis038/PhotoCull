@@ -265,7 +265,9 @@ CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT);
 
 ## 13. 自动更新
 
-- `UpdateChecker` 调用 GitHub API `/repos/Jadis038/PhotoCull/releases`，只接受带 `.dmg` 且名称/标签含 `macos` 的 Release；Windows 的 MSI 与 `v1.0.5` 等标签不会命中。
+- `UpdateChecker` 读取 `https://github.com/Jadis038/PhotoCull/releases.atom`（Atom 无匿名 API 限额），只接受 tag 前缀 `macos-` 的 Release；Windows 的 `v1.0.5` 等标签不会命中。
+- Atom 不带资产 URL，按固定命名构造 `https://github.com/<repo>/releases/download/<tag>/PhotoCull-<版本>-macOS-arm64.dmg`。
+- 直连失败自动使用 `https://gh-proxy.com/` 前缀的镜像重试（下载同样支持回退）。
 - macOS Release 使用 `--prerelease` 发布，避免改变 Windows 端 `/releases/latest`；macOS 检查器默认包含 prerelease。
 - 版本比较按语义化数字（tag `macos-v1.0.2` → 1.0.2）；只有高于当前 `AppInfo.version` 才提示。
 - 用户确认后下载 DMG 到临时目录 → `hdiutil attach` → `ditto` 出 `.app` → 校验新版本 → 用 `/bin/sh` 脚本在应用退出后替换自身并 `open` 重启；失败时恢复旧 `.app`。

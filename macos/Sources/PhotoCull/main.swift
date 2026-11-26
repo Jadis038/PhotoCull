@@ -29,6 +29,7 @@ if has("--help") || has("-h") {
       --matrix <文件夹> [--csv <路径>]               输出格式测试矩阵
       --update-check                                检查 GitHub 上的 macOS 更新
       --update-auto                                 无人值守下载并安装更新（测试用）
+      --update-mirror                               更新下载强制走 gh-proxy 镜像（测试用）
       --version                                      显示版本
     """)
     exit(0)
@@ -64,6 +65,9 @@ if let folder = value(after: "--uitest") {
 }
 if has("--update-auto") {
     UpdateChecker.shared.autoUpdateMode = true
+}
+if has("--update-mirror") {
+    UpdateChecker.shared.forceMirrorOnly = true
 }
 app.delegate = delegate
 app.setActivationPolicy(.regular)
