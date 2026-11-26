@@ -20,6 +20,9 @@ public sealed class MainViewModel : INotifyPropertyChanged
         Session = session;
         Session.CountsChanged += (_, _) => RaiseCounts();
         Session.CurrentChanged += (_, _) => RaiseCurrent();
+        // 状态栏开机就显示版本，方便确认装的是哪个版本
+        var ver = typeof(MainViewModel).Assembly.GetName().Version;
+        _statusText = $"影·筛 {(ver != null ? ver.ToString(3) : "")} · 拖入文件夹或用「打开文件夹」开始";
     }
 
     // ——— 当前项（唯一数据源是 ViewerSession.Current，UI 与代码都改它） ———
