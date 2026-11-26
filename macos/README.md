@@ -90,7 +90,8 @@
 
 - 每次启动（可在设置中关闭）通过 GitHub Releases Atom 源检查**只针对 macOS** 的 `.dmg` 更新（Atom 没有匿名 API 的 60 次/小时限额）。
 - 资源地址按固定命名构造：`PhotoCull-<版本>-macOS-arm64.dmg`。
-- Windows 的 MSI Release 会被忽略；为避免影响 Windows 端的“最新版本”判断，macOS 的 Release 以 **prerelease** 形式发布。
+- macOS 的 Release 为**正式版**；Windows 的 MSI Release 会被忽略。
+- 实测 GitHub 的 `/releases/latest` 仍指向 Windows `v1.0.5`；即使它变化，Windows 更新器还会回退仓库根目录 `latest.json`（仍是 v1.0.5）。
 - 直连失败自动切换到 `gh-proxy.com` 镜像重试。
 - 发现新版本会弹窗显示版本号与更新说明，由用户选择「下载并安装」或「以后再说」。
 - 下载完成后校验版本号，替换当前 `.app` 并自动重启；应用需要放在「应用程序」等可写目录。
