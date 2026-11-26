@@ -443,13 +443,6 @@ public sealed class ViewerSession : IDisposable
         return r;
     }
 
-    public void AdvanceToNext()
-    {
-        if (Current == null) return;
-        int i = Items.IndexOf(Current);
-        if (i >= 0 && i + 1 < Items.Count) SetCurrent(Items[i + 1]);
-    }
-
     public void Dispose()
     {
         try { Queue.Dispose(); } catch { }

@@ -20,9 +20,6 @@ public sealed class AppSettings
 
     /// <summary>标记动作：复制（默认）或移动。</summary>
     public MarkMode MarkMode { get; set; } = MarkMode.Copy;
-    /// <summary>标记后自动前进到下一张。</summary>
-    public bool AutoAdvanceAfterMark { get; set; } = true;
-
     /// <summary>磁盘缩略图缓存上限（GB）。</summary>
     public double CacheLimitGb { get; set; } = 5.0;
     /// <summary>内存预览缓存上限（MB）。</summary>

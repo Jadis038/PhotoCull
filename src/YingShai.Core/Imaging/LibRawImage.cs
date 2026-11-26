@@ -37,6 +37,9 @@ public sealed class LibRawImage : IDisposable
         _path = path;
     }
 
+    /// <summary>原生句柄（诊断命令使用）。</summary>
+    public IntPtr Handle => _lr;
+
     /// <summary>LibRaw 支持的 RAW 扩展名（不含 X3F：LibRaw 0.21 不认这两个样本，见测试矩阵）。</summary>
     public static readonly string[] RawExtensions =
     {

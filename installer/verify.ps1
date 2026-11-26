@@ -56,8 +56,12 @@ $stLines = ($st -split "`r?`n" | Where-Object { $_ -match '自检结果' })
 Check "--selftest 全绿" ($st -match '失败 0 项') $stLines
 
 Write-Host "`n== 卸载（静默）==" -ForegroundColor Cyan
+# 用注册表里实际登记的产品码卸载，避免 msiexec /x <msi路径> 与产品注册错位
+$installedCode = ($arp.PSChildName)
+if (-not $installedCode) { $installedCode = '{C6DD36F0-0486-4722-A05C-841E5ED718C6}' }
+Write-Host "  产品码：$installedCode"
 $sw.Restart()
-$p = Start-Process msiexec.exe -ArgumentList @('/x', "`"$Msi`"", '/qn', '/l*v', "`"$LogDir\uninstall.log`"") -PassThru -Wait
+$p = Start-Process msiexec.exe -ArgumentList @('/x', $installedCode, '/qn', '/l*v', "`"$LogDir\uninstall.log`"") -PassThru -Wait
 $sw.Stop()
 Check "卸载退出码 0" ($p.ExitCode -eq 0) "exit=$($p.ExitCode) 用时 $([math]::Round($sw.Elapsed.TotalSeconds,2))s"
 Check "安装目录已删除" (-not (Test-Path $AppDir)) $AppDir

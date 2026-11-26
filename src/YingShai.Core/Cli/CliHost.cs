@@ -43,11 +43,49 @@ public static class CliHost
             case "--selftest":
                 return new SelfTest().Run();
 
+            case "--decode-full":
+            {
+                // 诊断：全解一个 RAW，打印 libraw_processed_image_t 的原始字段，用于定位位图转换问题
+                if (args.Length < 2) { Console.Error.WriteLine("用法：--decode-full <raw>"); return 2; }
+                var sw = System.Diagnostics.Stopwatch.StartNew();
+                if (!Imaging.LibRawImage.TryOpen(args[1], out var img, out var err) || img == null)
+                { Console.Error.WriteLine("打开失败：" + err); return 1; }
+                using (img)
+                {
+                    var meta = img.ReadMetadata();
+                    Console.WriteLine($"open ok: {meta.Model} {meta.PixelWidth}x{meta.PixelHeight}");
+                    int rc = YingShai.Core.Imaging.LibRawInterop.libraw_unpack(img.Handle);
+                    Console.WriteLine($"unpack rc={rc} {YingShai.Core.Imaging.LibRawInterop.ErrorText(rc)}");
+                    if (rc != 0) return 1;
+                    YingShai.Core.Imaging.LibRawInterop.libraw_set_output_bps(img.Handle, 8);
+                    YingShai.Core.Imaging.LibRawInterop.libraw_set_output_color(img.Handle, 1);
+                    rc = YingShai.Core.Imaging.LibRawInterop.libraw_dcraw_process(img.Handle);
+                    Console.WriteLine($"dcraw_process rc={rc} {YingShai.Core.Imaging.LibRawInterop.ErrorText(rc)}");
+                    if (rc != 0) return 1;
+                    IntPtr mem = YingShai.Core.Imaging.LibRawInterop.libraw_dcraw_make_mem_image(img.Handle, out int merr);
+                    if (mem == IntPtr.Zero) { Console.WriteLine($"make_mem_image err={YingShai.Core.Imaging.LibRawInterop.ErrorText(merr)}"); return 1; }
+                    var p = YingShai.Core.Imaging.LibRawInterop.GetProcessedImage(mem);
+                    Console.WriteLine($"type={p.type} width={p.width} height={p.height} colors={p.colors} bits={p.bits} data_size={p.data_size}");
+                    Console.WriteLine($"期望 stride*height = {(int)p.width * 3 * p.height}");
+                    try
+                    {
+                        IntPtr dp = IntPtr.Add(mem, YingShai.Core.Imaging.LibRawProcessedImageLayout.DataOffset);
+                        var bs = YingShai.Core.Imaging.WicImage.FromRgb24(dp, p.width, p.height, p.width * 3);
+                        Console.WriteLine($"转位图 ok: {bs.PixelWidth}x{bs.PixelHeight}");
+                    }
+                    catch (Exception ex) { Console.WriteLine($"转位图 FAIL: {ex.Message}"); }
+                    YingShai.Core.Imaging.LibRawInterop.libraw_dcraw_clear_mem(mem);
+                }
+                sw.Stop();
+                Console.WriteLine($"总耗时 {sw.Elapsed.TotalMilliseconds:F0} ms");
+                return 0;
+            }
+
             case "--make-icon":
             {
-                // 生成程序图标（256×256 PNG-in-ICO），供 exe/快捷方式/卸载项使用
-                if (args.Length < 2) { Console.Error.WriteLine("用法：--make-icon <out.ico>"); return 2; }
-                return IconMaker.MakeIcon(args[1]);
+                // 生成程序图标：--make-icon <out.ico> 用内置默认图；--make-icon <out.ico> <source.png> 用指定图片
+                if (args.Length < 2) { Console.Error.WriteLine("用法：--make-icon <out.ico> [source.png]"); return 2; }
+                return IconMaker.MakeIcon(args[1], args.Length > 2 ? args[2] : null);
             }
 
             case "--matrix":

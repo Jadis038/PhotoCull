@@ -223,6 +223,7 @@
                      ScrollViewer.VerticalScrollBarVisibility="Disabled"
                      ScrollViewer.CanContentScroll="True"
                      ItemContainerStyle="{StaticResource ThumbItem}"
+                     SelectionChanged="OnThumbSelectionChanged"
                      VirtualizingPanel.IsVirtualizing="True"
                      VirtualizingPanel.VirtualizationMode="Recycling"
                      VirtualizingPanel.ScrollUnit="Pixel"

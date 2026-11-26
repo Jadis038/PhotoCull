@@ -28,6 +28,7 @@ public partial class MainWindow : Window
     private Vector _panOrigin;
     private readonly DispatcherTimer _priorityTimer;
     private readonly DispatcherTimer _progressTimer;
+    private CancellationTokenSource? _warmupCts;
     private string _lastFolder = "";
 
     public MainWindow(MainViewModel vm)
@@ -113,6 +114,7 @@ public partial class MainWindow : Window
     {
         ThumbList.SelectedItem = _vm.Current;
         UpdateThumbPriorities();
+        StartWarmupSweep();
         ScheduleTakenTimeFill();
         if (_mode == ZoomMode.Fit) ApplyFit();
     }
@@ -130,24 +132,57 @@ public partial class MainWindow : Window
         catch { }
     }
 
-    /// <summary>按当前选中项给缩略图重新排优先级：可见 12 张 &gt; 前后 30 张 &gt; 其余预热。</summary>
+    /// <summary>
+    /// 给当前项附近（±60 张）的缩略图排优先级。
+    /// 注意：绝不在这里遍历全部几千张——那会在 UI 线程上做几千次入队，点击就卡住了；
+    /// 全量预热由 StartWarmupSweep 在后台分批做。
+    /// </summary>
     private void UpdateThumbPriorities()
     {
         var cur = _vm.Current;
+        int n = Session.Items.Count;
         if (cur == null)
         {
-            foreach (var item in Session.Items) Session.RequestThumb(item, DecodePriority.Warmup);
+            foreach (var item in Session.Items.Take(24)) Session.RequestThumb(item, DecodePriority.VisibleStrip);
             return;
         }
         int ci = cur.Index;
-        foreach (var item in Session.Items)
+        int lo = Math.Max(0, ci - 60), hi = Math.Min(n - 1, ci + 60);
+        for (int i = lo; i <= hi; i++)
         {
+            var item = Session.Items[i];
             if (item.Thumb != null) continue;
             int d = Math.Abs(item.Index - ci);
-            int prio = d <= 12 ? DecodePriority.VisibleStrip : d <= 42 ? DecodePriority.Prefetch : DecodePriority.Warmup;
+            int prio = d <= 12 ? DecodePriority.VisibleStrip : DecodePriority.Prefetch;
             Session.RequestThumb(item, prio);
             if (item.Thumb == null) Session.Reprioritize(item, prio);
         }
+    }
+
+    /// <summary>
+    /// 全量缩略图预热：后台线程分批（每批 100 张）排队，优先级最低，不打扰交互；
+    /// 打开新文件夹/关窗时取消。
+    /// </summary>
+    private void StartWarmupSweep()
+    {
+        _warmupCts?.Cancel();
+        _warmupCts = new CancellationTokenSource();
+        var ct = _warmupCts.Token;
+        var items = Session.Items.ToList();
+        if (items.Count == 0) return;
+        Task.Run(async () =>
+        {
+            for (int i = 0; i < items.Count; i += 100)
+            {
+                if (ct.IsCancellationRequested) return;
+                foreach (var it in items.Skip(i).Take(100))
+                {
+                    if (ct.IsCancellationRequested) return;
+                    Session.RequestThumb(it, DecodePriority.Warmup);
+                }
+                try { await Task.Delay(40, ct); } catch (TaskCanceledException) { return; }
+            }
+        }, ct);
     }
 
     private void UpdateProgress()
@@ -397,8 +432,7 @@ public partial class MainWindow : Window
 
         if (result.Warning != null) _vm.StatusText = result.Warning;
         else _vm.StatusText = wasMarked ? $"已取消筛选：{item.Name}" : $"已移入筛选：{item.Name}";
-
-        if (!wasMarked && Session.Settings.AutoAdvanceAfterMark) Session.AdvanceToNext();
+        // 标记后停留在当前图上（用户可确认绿勾），用 → / 单击继续看下一张
     }
 
     private async void OnUndo(object sender, RoutedEventArgs e)
@@ -408,6 +442,17 @@ public partial class MainWindow : Window
         _vm.StatusText = r.Ok ? "已撤销上一步" : $"撤销失败：{r.Error}";
         if (!r.Ok && r.Error != "已取消" && r.Error != "没有可撤销的操作")
             MessageBox.Show(this, r.Error ?? "", "影·筛", MessageBoxButton.OK, MessageBoxImage.Warning);
+    }
+
+    /// <summary>
+    /// 单击缩略图 = 立即在上方查看这张图。
+    /// 不依赖 SelectedItem 的 TwoWay 绑定，直接处理 SelectionChanged，保证单击一定切换大图。
+    /// </summary>
+    private void OnThumbSelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (e.AddedItems.Count == 0) return;
+        if (e.AddedItems[0] is ImageItem item && !ReferenceEquals(Session.Current, item))
+            Session.SetCurrent(item);   // CurrentChanged → ViewModel/大图自动跟着切
     }
 
     private void OnThumbDoubleClick(object sender, MouseButtonEventArgs e)
@@ -651,6 +696,7 @@ public partial class MainWindow : Window
         Session.Settings.Save();
         _progressTimer.Stop();
         _priorityTimer.Stop();
+        _warmupCts?.Cancel();
         Session.Dispose();
     }
 
@@ -659,6 +705,19 @@ public partial class MainWindow : Window
         $"img={(int)(_vm.LargeImage?.PixelWidth ?? 0)}x{(int)(_vm.LargeImage?.PixelHeight ?? 0)} " +
         $"scale={ImgScale.ScaleX:F3} tx={ImgTranslate.X:F1} ty={ImgTranslate.Y:F1} " +
         $"render={MainImage.RenderSize.Width:F0}x{MainImage.RenderSize.Height:F0}";
+
+    /// <summary>验收：模拟单击缩略图（与鼠标单击同一条选中路径），等大图切换后返回结果。</summary>
+    public async Task<(bool CurrentOk, bool ImageOk, double Ms)> SimulateThumbClickAsync(ImageItem item)
+    {
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        ThumbList.ScrollIntoView(item);
+        ThumbList.SelectedItem = item;   // 触发 SelectionChanged → 查看这张图
+        // 等当前项与大图就绪（最多 8 秒）
+        for (int i = 0; i < 160 && (_vm.Current != item || _vm.LargeImage == null); i++)
+            await Task.Delay(50);
+        sw.Stop();
+        return (_vm.Current == item, _vm.LargeImage != null && _vm.Current == item, sw.Elapsed.TotalMilliseconds);
+    }
 
     /// <summary>验收用：切到 100%，触发后台全解并返回耗时与结果。</summary>
     public async Task<(bool Ok, double Ms, int W, int H)> TestFullResAsync()

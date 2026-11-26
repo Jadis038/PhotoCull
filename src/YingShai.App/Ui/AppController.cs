@@ -138,6 +138,32 @@ public static class AppController
                 lines.Add($"已渲染（标记前）：{outPng}");
                 lines.Add($"布局：{win.LayoutDebug}");
 
+                if (args.Contains("--click-test") && _session != null && _vm != null)
+                {
+                    // 单击选择测试：模拟鼠标单击缩略图（同一条选中路径），验证上方立即查看这张图
+                    var target = _session.Items.Count > 5 ? _session.Items[5] : _session.Items[^1];
+                    var before = _vm.Current;
+                    var click = await win.SimulateThumbClickAsync(target);
+                    lines.Add($"单击缩略图测试：从 {before?.Name} 单击 {target.Name} → 当前项一致={click.CurrentOk}，大图已切换={click.ImageOk}，耗时 {click.Ms:F0} ms");
+                    if (!click.CurrentOk || !click.ImageOk) exitCode = 1;
+
+                    // 标记后停留测试：双击/标记当前图后，预览不再跳到下一张
+                    var marked = _vm.Current!;
+                    var mr = await _session.ToggleMarkAsync(marked);
+                    marked.ApplyMarkVisual();
+                    _vm.RaiseCounts();
+                    await Task.Delay(150);
+                    bool stayed = _vm.Current == marked;
+                    lines.Add($"标记后停留测试：标记 {marked.Name} {(mr.Ok ? "成功" : "失败 " + mr.Error)}，当前项未移动={stayed}，已筛 {_session.MarkedCount}/{_session.TotalCount}");
+                    if (!stayed || !mr.Ok) exitCode = 1;
+
+                    _vm.StatusText = $"已筛 {_session.MarkedCount} 张";
+                    await Task.Delay(700);
+                    string markedPng = Path.Combine(Path.GetDirectoryName(outPng)!, Path.GetFileNameWithoutExtension(outPng) + "_marked.png");
+                    win.RenderToPng(markedPng);
+                    lines.Add($"已渲染（单击选中+标记后）：{markedPng}");
+                }
+
                 if (args.Contains("--mark-demo") && _session != null && _vm != null)
                 {
                     // 标记演示：用于截图证明角标/灰调/计数

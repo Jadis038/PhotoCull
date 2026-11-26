@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <!--
   影·筛 —— WiX v4 打包定义
   · 每用户安装到 %LOCALAPPDATA%\Programs\影·筛，免 UAC（Scope=perUser → LUA 包）
@@ -11,12 +11,19 @@
   <Package Name="影·筛"
            Manufacturer="影·筛 开源项目"
            Version="$(var.ProductVersion)"
+           ProductCode="{C6DD36F0-0486-4722-A05C-841E5ED718C6}"
            UpgradeCode="{2F0C7B51-8A5E-4C33-9C1B-6E7D51B2A4C8}"
            Language="2052"
            Codepage="936"
            Scope="perUser"
            InstallerVersion="500"
            Compressed="yes">
+    <!--
+      ProductCode 固定到版本 1.0.0（不要每次构建自动生成）：
+      自动生成的 ProductCode 配合 msiexec /x <msi路径> 会在反复重打包/安装的机器上
+      与实际注册的产品错位（MSI 组件按 GUID 引用计数，错位后卸载只减计数不删文件，
+      2026-11-26 实测踩坑）。以后升版本时换一个新 ProductCode 并同步更新 installer/verify.ps1。
+    -->
 
     <SummaryInformation Description="影·筛 —— Windows 图片快速筛选工具" Manufacturer="影·筛 开源项目" />
     <MediaTemplate EmbedCab="yes" />
