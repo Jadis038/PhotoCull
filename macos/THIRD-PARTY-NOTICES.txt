@@ -1,0 +1,36 @@
+影·筛 / PhotoCull（macOS）第三方组件与许可说明
+=================================================
+
+一、主代码
+----------
+影·筛 主代码使用 MIT 许可，版权归 Галин 与影·筛贡献者所有（见 LICENSE）。
+
+二、随包分发的第三方二进制
+--------------------------
+无。macOS 版不随包分发 LibRaw、FFmpeg、ImageMagick 或任何第三方动态库。
+应用仅链接 macOS 系统自带的框架：
+
+  - AppKit / Foundation
+  - ImageIO / CoreGraphics / CoreImage / CoreText
+  - UniformTypeIdentifiers
+  - SQLite3（系统库）
+  - Swift 运行时（随应用打包的 Swift 标准库与并发库，Apple 许可）
+
+这些系统框架由 macOS 提供，不构成需要随包分发的第三方组件。
+
+三、图标与界面素材
+------------------
+应用图标：Ho Wing Own（YSLGOG.png），版权归原作者所有，按作者要求用于本项目，
+不在 MIT 代码许可范围内。
+界面图标：Apple SF Symbols，通过系统 API 使用，遵循 Apple 的 SF Symbols 许可。
+
+四、与 Windows 版的差异
+----------------------
+Windows 版使用 LibRaw（LGPL-2.1 / CDDL-1.0 双许可）解码 RAW。
+macOS 版改用系统 ImageIO 的 RAW 管线，因此不需要分发 LibRaw，也没有
+LGPL/CDDL 的打包与源码提供义务。RAW 缩略图由本项目自行解析相机内嵌
+JPEG，不涉及第三方解码库。
+
+五、开源协议文本
+----------------
+MIT 许可全文见 LICENSE。问题反馈请通过项目仓库（本版本按用户要求暂未上传 GitHub）。
