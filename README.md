@@ -7,6 +7,14 @@
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Windows%2010%2021H2%2B%20x64-lightgrey)](#系统要求)
 
+## 作者与署名
+
+- **作者 / Author**：[Галин](../../)
+- **软件图标 / Logo**：**Ho Wing Own**
+- **开发方式**：本软件由 **DeepSeek 与 GLM 系列 AI 模型协作编码完成**（架构设计、引擎实现、UI、打包、
+  测试均在 AI 协作下完成，由 Галин 提出需求并验收）
+- 程序内署名位于主窗口右下角状态栏与信息栏底部
+
 ## 下载
 
 到 [Releases](../../releases/latest) 下载 `PhotoCull-Setup-x.x.x.msi`：
@@ -67,18 +75,27 @@
 **明确不支持**（专有格式，无公开解码方案）：X3F（Sigma/Polaroid Foveon）、三星专有压缩 DNG（TIFF 头
 `Compression=52546`）。这类文件会显示占位与"无法解码"，不影响其它文件。
 
-## 署名与致谢
-
-- **作者 / Author**：[Галин](../../)
-- **软件图标 / Logo**：**Ho Wing Own**
-- **开发方式**：本软件由 **DeepSeek 与 GLM 系列 AI 模型协作编码完成**（架构设计、引擎实现、UI、打包、
-  测试均在 AI 协作下完成，由 Галин 提出需求并验收）
-- 程序内署名位于主窗口右下角状态栏与信息栏底部
-
 ## 开源协议
 
-主代码 **MIT**。RAW 解码使用 [LibRaw](https://www.libraw.org/)（**LGPL-2.1 / CDDL-1.0** 双许可，动态链接
-分发，未修改源码），许可证全文随安装包放在 `licenses\` 目录。
+主代码以 **MIT License** 开源（全文见 [LICENSE](LICENSE)），可自由使用、修改、分发，包括商用。
+RAW 解码使用 [LibRaw](https://www.libraw.org/)（**LGPL-2.1 / CDDL-1.0** 双许可，以动态链接方式分发，
+未修改其源码），许可证全文随安装包放在 `licenses\` 目录。其它第三方组件（SQLite、.NET）同样为
+宽松许可，完整声明见 [native/libraw/THIRD-PARTY-NOTICES.txt](native/libraw/THIRD-PARTY-NOTICES.txt)。
+
+## 法律声明
+
+- **免责声明**：本软件按"现状"提供，不附带任何明示或暗示的担保，包括但不限于适销性与特定用途适用性。
+  使用本软件进行的一切文件操作风险由使用者自行承担；虽然软件设计了 .part 临时文件、原子改名、
+  回收站删除与逐张回滚等保护机制，作者与贡献者仍不对任何数据丢失或损坏承担责任。**重要操作请保留备份。**
+- **数据与隐私**：本软件**不上传任何用户数据**。唯一的网络访问是启动时的更新检查（仅向 GitHub 查询
+  最新版本号）与用户主动同意后的更新包下载；图片、路径、索引、缓存均只保存在本地。
+- **商标声明**：Windows、Nikon、Canon、Sony、Fujifilm、Olympus、Panasonic、Pentax、Leica、Hasselblad、
+  DJI、Samsung 等品牌与商标归各自权利人所有。本仓库提及这些名称仅用于说明兼容性，
+  与相关权利人**无任何隶属或背书关系**。
+- **AI 生成内容声明**：本仓库的部分代码由 AI 模型（DeepSeek、GLM 系列）生成，已经过 17 组 64 项
+  自动化自检与真实素材（含 2500 张 Nikon Z8 NEF）实测验证。使用者可依据 MIT 许可自由审计、
+  修改与分发。
+- **版权**：© 2026 Галин 与影·筛（PhotoCull）贡献者。
 
 ## Roadmap
 
