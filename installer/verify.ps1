@@ -4,7 +4,7 @@
 
 $ErrorActionPreference = 'Continue'
 $Repo = if ($global:REPO) { $global:REPO } else { (Resolve-Path (Join-Path $PSScriptRoot '..')).Path }
-$Msi = Join-Path $Repo 'dist\影·筛-Setup-1.0.2.msi'
+$Msi = Join-Path $Repo 'dist\影·筛-Setup-1.0.3.msi'
 $AppDir = Join-Path $env:LOCALAPPDATA 'Programs\影·筛'
 $MenuLnk = Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs\影·筛\影·筛.lnk'
 $LogDir = Join-Path $Repo 'dist'
@@ -58,7 +58,7 @@ Check "--selftest 全绿" ($st -match '失败 0 项') $stLines
 Write-Host "`n== 卸载（静默）==" -ForegroundColor Cyan
 # 用注册表里实际登记的产品码卸载，避免 msiexec /x <msi路径> 与产品注册错位
 $installedCode = ($arp.PSChildName)
-if (-not $installedCode) { $installedCode = '{9B1F6C3A-2E4D-4A87-B3C5-7E0D9A2F6B48}' }
+if (-not $installedCode) { $installedCode = '{5D2E8B74-9C1A-4F63-8E2B-6A4C1D9F7B05}' }
 Write-Host "  产品码：$installedCode"
 $sw.Restart()
 $p = Start-Process msiexec.exe -ArgumentList @('/x', $installedCode, '/qn', '/l*v', "`"$LogDir\uninstall.log`"") -PassThru -Wait

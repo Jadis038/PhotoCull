@@ -10,10 +10,11 @@
     <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
     <!-- 统一版本号，MSI 里也引用它 -->
-    <Version>1.0.2</Version>
+    <Version>1.0.3</Version>
     <Company>影·筛 开源项目</Company>
+    <Authors>Галин</Authors>
     <Product>影·筛</Product>
-    <Copyright>MIT License</Copyright>
+    <Copyright>MIT License · 作者 Галин · 软件图标 Ho Wing Own</Copyright>
     <NeutralLanguage>zh-Hans</NeutralLanguage>
     <SatelliteResourceLanguages>zh-Hans</SatelliteResourceLanguages>
     <InvariantGlobalization>false</InvariantGlobalization>

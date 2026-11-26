@@ -142,3 +142,10 @@ tests\                自检与压测脚本
 
 主代码 MIT。RAW 解码使用 LibRaw（LGPL-2.1 / CDDL-1.0 双许可，动态链接分发），
 许可证全文随安装包放在 `licenses\` 目录，也见 [native/libraw/](native/libraw/)。
+
+## 署名
+
+- 作者：**Галин**
+- 软件图标：**Ho Wing Own**
+
+（程序内的署名放在右侧信息栏最下方的小字里。）
