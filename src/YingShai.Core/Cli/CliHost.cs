@@ -63,9 +63,26 @@ public static class CliHost
                 if (!auto) return 0;
                 var dest = Path.Combine(Path.GetTempPath(), $"PhotoCull-Setup-{info.LatestVersion}.msi");
                 Console.WriteLine("开始下载…");
-                await Update.UpdateChecker.DownloadAsync(info.MsiUrl!, dest,
-                    (done, total) => { if (Console.CursorLeft == 0) Console.Write($"  已下载 {done / 1048576.0:F1} MB" + (total > 0 ? $" / {total / 1048576.0:F1} MB" : "")); },
-                    CancellationToken.None);
+                try
+                {
+                    await Update.UpdateChecker.DownloadAsync(info.MsiUrl!, dest,
+                        (done, total) =>
+                        {
+                            try
+                            {
+                                if (!Console.IsOutputRedirected && total > 0)
+                                    Console.Write($"  已下载 {done / 1048576.0:F1} / {total / 1048576.0:F1} MB\r");
+                            }
+                            catch { }
+                        },
+                        CancellationToken.None);
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine();
+                    Console.WriteLine("下载失败：" + ex.Message);
+                    return 1;
+                }
                 Console.WriteLine();
                 Console.WriteLine($"下载完成：{dest}（{new FileInfo(dest).Length / 1048576.0:F1} MB）");
                 Update.UpdateChecker.LaunchInstaller(dest);

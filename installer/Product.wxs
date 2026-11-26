@@ -11,7 +11,7 @@
   <Package Name="影·筛"
            Manufacturer="影·筛 开源项目"
            Version="$(var.ProductVersion)"
-           ProductCode="{C8D1A0B3-4E27-4F96-9A5D-2C6B8E1F0A74}"
+           ProductCode="$(var.PkgCode)"
            UpgradeCode="{2F0C7B51-8A5E-4C33-9C1B-6E7D51B2A4C8}"
            Language="2052"
            Codepage="936"

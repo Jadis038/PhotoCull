@@ -121,7 +121,8 @@ public static class UpdateChecker
                 {
                     await dst.WriteAsync(buf.AsMemory(0, n), ct);
                     read += n;
-                    progress?.Invoke(read, total);
+                    try { progress?.Invoke(read, total); }
+                    catch { /* 控制台重定向等场景下进度回调可能失败，绝不能带崩下载 */ }
                 }
                 return u;
             }
