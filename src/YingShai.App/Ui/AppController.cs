@@ -1,4 +1,4 @@
-﻿using System.Security.Cryptography;
+using System.Security.Cryptography;
 using System.Windows;
 using YingShai.Core;
 using YingShai.Core.Index;
@@ -260,14 +260,50 @@ public static class AppController
                         lines.Add($"再双击大图 → 适应窗口：{backToFit}（{z2.Text}，scale={z2.Scale:F3}）");
                         if (!backToFit) exitCode = 1;
 
-                        // 真实注入滚轮（有桌面会话时生效；无桌面时会安静地无效，仅作参考）
-                        var screenPos = win.GetImageAreaCenterOnScreen();
-                        var sz0 = win.ZoomState;
-                        MouseInput.Wheel((int)screenPos.X, (int)screenPos.Y, -1);
-                        await Task.Delay(200);
-                        var sz1 = win.ZoomState;
-                        bool injectedWheel = Math.Abs(sz1.Ty - sz0.Ty) > 1;
-                        lines.Add($"（参考）真实滚轮注入：Ty {sz0.Ty:F0}→{sz1.Ty:F0}，{(injectedWheel ? "生效" : "本机未生效（无交互桌面）")}");
+                        // ——— 4) 回归：换一张图后双击放大，必须显示"新图"的全解，而不是上一张的缓存 ———
+                        var itemA = _vm.Current!;
+                        var itemB = _session.Items.FirstOrDefault(i => !ReferenceEquals(i, itemA));
+                        if (itemB != null)
+                        {
+                            win.RaiseThumbPreviewDown(itemB);
+                            for (int i = 0; i < 120 && _vm.Current != itemB; i++) await Task.Delay(50);
+                            bool cleared = win.FullResOwnerForTest != itemA.FullPath;
+                            lines.Add($"换图后 100% 缓存作废：{cleared}（当前 {itemB.Name}，缓存归属={win.FullResOwnerForTest ?? "无"}）");
+                            if (!cleared) exitCode = 1;
+
+                            var zb = await win.TestDoubleClickZoomAsync();
+                            bool ownerOk = win.FullResOwnerForTest == itemB.FullPath && zb.Text == "100%";
+                            lines.Add($"新图双击放大：{ownerOk}（{zb.Text}，缓存归属={win.FullResOwnerForTest ?? "无"}，应={itemB.Name}）");
+                            if (!ownerOk) exitCode = 1;
+
+                            await win.TestDoubleClickZoomAsync();   // 回到适应窗口
+                        }
+
+                        // ——— 5) 真实滚轮：画面必须真的动（对比截图哈希），Ctrl+滚轮走横向 ———
+                        win.ResetFit();
+                        await Task.Delay(150);
+                        string hash0 = RenderHash(win, outPng, "_wheel0");
+                        var sp = win.GetImageAreaCenterOnScreen();
+                        MouseInput.Wheel((int)sp.X, (int)sp.Y, -2);              // 滚轮向下两格
+                        await Task.Delay(250);
+                        string hash1 = RenderHash(win, outPng, "_wheel1");
+                        var st1 = win.ZoomState;
+                        lines.Add($"真实滚轮（上下）：画面变化={hash0 != hash1}，Ty={st1.Ty:F0}");
+                        if (hash0 == hash1) exitCode = 1;
+
+                        MouseInput.Wheel((int)sp.X, (int)sp.Y, -2, ctrl: true);  // Ctrl+滚轮
+                        await Task.Delay(250);
+                        string hash2 = RenderHash(win, outPng, "_wheel2");
+                        var st2 = win.ZoomState;
+                        lines.Add($"真实 Ctrl+滚轮（左右）：画面变化={hash1 != hash2}，Tx={st2.Tx:F0}（缩放 {st2.Scale:F3} 不变）");
+                        if (hash1 == hash2 || Math.Abs(st2.Scale - st1.Scale) > 0.001) exitCode = 1;
+
+                        MouseInput.Wheel((int)sp.X, (int)sp.Y, 2, alt: true);    // Alt+滚轮
+                        await Task.Delay(250);
+                        var st3 = win.ZoomState;
+                        bool altZoom = st3.Scale > st2.Scale + 0.01;
+                        lines.Add($"真实 Alt+滚轮（缩放）：{altZoom}  {st2.Scale:F3}→{st3.Scale:F3}");
+                        if (!altZoom) exitCode = 1;
                     }
                 }
 
@@ -317,5 +353,13 @@ public static class AppController
             try { File.WriteAllLines(logPath, lines, System.Text.Encoding.UTF8); } catch { }
             Application.Current.Shutdown(exitCode);
         }
+    }
+
+    /// <summary>渲染当前窗口并返回 PNG 的短哈希（用于判断画面是否真的变化）。</summary>
+    private static string RenderHash(MainWindow win, string basePng, string suffix)
+    {
+        var path = Path.Combine(Path.GetDirectoryName(basePng)!, Path.GetFileNameWithoutExtension(basePng) + suffix + ".png");
+        win.RenderToPng(path);
+        return Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(path)))[..12];
     }
 }

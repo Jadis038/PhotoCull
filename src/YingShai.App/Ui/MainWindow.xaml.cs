@@ -1,4 +1,4 @@
-﻿using System.Windows;
+using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
@@ -24,6 +24,7 @@ public partial class MainWindow : Window
     private double _viewScale = 1.0;          // 虚拟画布缩放
     private double _viewTx, _viewTy;           // 整图左上角在屏幕上的位置（虚拟画布平移）
     private Int32Rect _cropRect = Int32Rect.Empty;  // 当前视口裁剪矩形（整图显示时为空）
+    private string? _fullResFor;               // FullImage 属于哪个文件（换图时必须作废）
     private const double MaxDirectDisplayPixels = 4000;  // 超过这个显示尺寸就必须走视口裁剪
     private CancellationTokenSource? _imageCts;
     private bool _panning;
@@ -57,6 +58,10 @@ public partial class MainWindow : Window
 
         _priorityTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(220) };
         _priorityTimer.Tick += (_, _) => { _priorityTimer.Stop(); UpdateThumbPriorities(); };
+
+        // 滚轮用 Preview 事件 + handledEventsToo 兜底注册：即使以后大图区里加了 ScrollViewer 之类
+        // 会吞掉 MouseWheel 的子元素，缩放/平移也一定生效
+        ImageArea.AddHandler(UIElement.PreviewMouseWheelEvent, new MouseWheelEventHandler(OnImageWheel), true);
 
         _progressTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(500) };
         _progressTimer.Tick += (_, _) => UpdateProgress();
@@ -215,6 +220,12 @@ public partial class MainWindow : Window
         var item = _vm.Current;
         _imageCts?.Cancel();
         if (item == null) { _vm.LargeImage = null; return; }
+        // 换图了：100% 全解缓存必须作废，否则下一张双击放大时会显示上一张的全解图
+        if (_fullResFor != item.FullPath)
+        {
+            _vm.FullImage = null;
+            _fullResFor = null;
+        }
         var cts = new CancellationTokenSource();
         _imageCts = cts;
         _vm.ImageLoading = true;
@@ -273,7 +284,8 @@ public partial class MainWindow : Window
     {
         var item = _vm.Current;
         if (item == null) return;
-        if (_vm.FullImage != null) return;
+        // 只有"当前这张图"的全解缓存才有效（_fullResFor 记录它属于哪个文件）
+        if (_vm.FullImage != null && _fullResFor == item.FullPath) return;
         _vm.StatusText = "正在后台解码原图（100%）…";
         try
         {
@@ -282,6 +294,7 @@ public partial class MainWindow : Window
             if (full != null)
             {
                 _vm.FullImage = full;
+                _fullResFor = item.FullPath;
                 _vm.LargeImage = full;
                 _vm.StatusText = $"100% 原图已就绪（{full.PixelWidth}×{full.PixelHeight}）";
                 ApplyActual();
@@ -460,8 +473,9 @@ public partial class MainWindow : Window
         if (_mode == ZoomMode.Fit) _mode = ZoomMode.Free;   // 100% 下平移仍然是 100%，不要切走
         _viewTx += dx;
         _viewTy += dy;
-        _vm.ZoomText = $"自由缩放 {_viewScale * 100:F0}%";
+        _vm.ZoomText = Math.Abs(_viewScale - 1.0) < 0.005 ? "100%" : $"自由缩放 {_viewScale * 100:F0}%";
         ApplyView();
+        _vm.StatusText = $"滚轮：上下平移 · Ctrl+滚轮：左右平移 · Alt+滚轮：缩放（{_viewScale * 100:F0}%）";
     }
 
     private void OnImageMouseDown(object sender, MouseButtonEventArgs e)
@@ -539,15 +553,17 @@ public partial class MainWindow : Window
         }
 
         // 记录双击点落在图的哪个相对位置（0~1），用于放大后把该点锚回鼠标处
+        var item = _vm.Current;
         var cur = _vm.LargeImage;
         double shownW = cur.PixelWidth * _viewScale;
         double shownH = cur.PixelHeight * _viewScale;
         double fracX = shownW > 0 ? Math.Clamp((anchor.X - _viewTx) / shownW, 0, 1) : 0.5;
         double fracY = shownH > 0 ? Math.Clamp((anchor.Y - _viewTy) / shownH, 0, 1) : 0.5;
 
-        if (_vm.FullImage == null) await EnsureFullResAsync();
+        if (_vm.FullImage == null || item == null || _fullResFor != item.FullPath) await EnsureFullResAsync();
         var full = _vm.FullImage;
-        if (full == null) { ApplyFit(); return; }   // 全解失败就退回适应窗口
+        // 兜底：全解失败，或者这份缓存属于别的文件（曾经踩过：换图后沿用上一张的全解图），都退回适应窗口
+        if (full == null || item == null || _fullResFor != item.FullPath) { ApplyFit(); return; }
 
         _vm.LargeImage = full;
         _mode = ZoomMode.Actual;
@@ -948,6 +964,9 @@ public partial class MainWindow : Window
     /// <summary>当前缩放/平移状态（验收断言用）。</summary>
     public (string Text, double Scale, double Tx, double Ty) ZoomState
         => (_vm.ZoomText, _viewScale, _viewTx, _viewTy);
+
+    /// <summary>验收：当前 100% 全解缓存属于哪个文件（null = 没有缓存）。</summary>
+    public string? FullResOwnerForTest => _fullResFor;
 
     /// <summary>重置为适应窗口（验收用）。</summary>
     public void ResetFit() => ApplyFit();

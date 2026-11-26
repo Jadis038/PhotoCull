@@ -135,7 +135,7 @@
 
         <!-- ============ 大图区 ============ -->
         <Grid Grid.Row="1" Grid.Column="0" x:Name="ImageArea" Background="#101014" ClipToBounds="True"
-              MouseWheel="OnImageWheel" MouseLeftButtonDown="OnImageMouseDown"
+              MouseLeftButtonDown="OnImageMouseDown"
               MouseLeftButtonUp="OnImageMouseUp" MouseMove="OnImageMouseMove"
               LostMouseCapture="OnImageLostCapture"
               SizeChanged="OnImageAreaSizeChanged">
