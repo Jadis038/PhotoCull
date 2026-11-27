@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Windows;
 using YingShai.Core;
+using YingShai.Core.Model;
 using YingShai.Core.Index;
 using YingShai.Core.Ops;
 using YingShai.Core.Session;
@@ -334,6 +335,55 @@ public static class AppController
                         lines.Add($"真实 Alt+滚轮（缩放）：{altZoom}  {st2.Scale:F3}→{st3.Scale:F3}");
                         if (!altZoom) exitCode = 1;
                     }
+                }
+
+                if (args.Contains("--playhead-test") && _session != null && _vm != null)
+                {
+                    win.Activate();
+                    await Task.Delay(300);
+
+                    // ——— 1) 开启帧针模式 ———
+                    win.SetPlayheadForTest(true);
+                    lines.Add($"帧针模式：开启={win.PlayheadVisibleForTest()}（中线+顶部三角可见）");
+                    if (!win.PlayheadVisibleForTest()) exitCode = 1;
+
+                    // ——— 2) 滚动条拖到第 4 张：帧针判定 → 上方显示这张 ———
+                    var t4 = _session.Items.Count > 4 ? _session.Items[4] : _session.Items[^1];
+                    win.CenterThumbForTest(t4);
+                    for (int i = 0; i < 120 && _vm.Current != t4; i++) await Task.Delay(50);
+                    bool pick4 = _vm.Current == t4 && _vm.LargeImage != null;
+                    lines.Add($"帧针判定：滚到 {t4.Name} → 当前项={_vm.Current?.Name}，大图就绪={_vm.LargeImage != null} → {(pick4 ? "通过" : "失败")}");
+                    if (!pick4) exitCode = 1;
+
+                    // ——— 3) 再滚到第 0 张 ———
+                    var t0 = _session.Items[0];
+                    win.CenterThumbForTest(t0);
+                    for (int i = 0; i < 120 && _vm.Current != t0; i++) await Task.Delay(50);
+                    bool pick0 = _vm.Current == t0;
+                    lines.Add($"帧针判定：滚回 {t0.Name} → 当前项={_vm.Current?.Name} → {(pick0 ? "通过" : "失败")}");
+                    if (!pick0) exitCode = 1;
+
+                    // ——— 4) 空格键 = 双击缩略图（确认标记，画面停留）———
+                    var cur = _vm.Current!;
+                    win.PressSpaceForTest();
+                    for (int i = 0; i < 120 && cur.State != MarkState.Marked; i++) await Task.Delay(50);
+                    bool marked = cur.State == MarkState.Marked && _vm.Current == cur;
+                    lines.Add($"空格键标记：{cur.Name} 状态={cur.State}（应 Marked），画面停留={_vm.Current == cur}，已筛 {_session.MarkedCount}/{_session.TotalCount}");
+                    if (!marked) exitCode = 1;
+
+                    // ——— 5) 空格再按一次 = 取消标记 ———
+                    win.PressSpaceForTest();
+                    for (int i = 0; i < 120 && cur.State != MarkState.None; i++) await Task.Delay(50);
+                    bool unmarked = cur.State == MarkState.None;
+                    lines.Add($"空格再按：取消标记={unmarked}，状态={cur.State}");
+                    if (!unmarked) exitCode = 1;
+
+                    // 在帧针状态下截一张图（能看到中线）
+                    await Task.Delay(300);
+                    string phPng = Path.Combine(Path.GetDirectoryName(outPng)!, Path.GetFileNameWithoutExtension(outPng) + "_playhead.png");
+                    win.RenderToPng(phPng);
+                    lines.Add($"已渲染（帧针模式）：{phPng}");
+                    win.SetPlayheadForTest(false);
                 }
 
                 if (args.Contains("--mark-demo") && _session != null && _vm != null)

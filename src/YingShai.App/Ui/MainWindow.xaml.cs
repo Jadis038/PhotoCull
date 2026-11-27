@@ -29,6 +29,11 @@ public partial class MainWindow : Window
     private CancellationTokenSource? _imageCts;
     private bool _panning;
     private bool _panArmed;
+    private ScrollViewer? _thumbScroll;
+    private bool _needleSync;                       // 帧针模式下程序化选图时，暂时抑制帧针判定
+    private DispatcherTimer? _needleSyncTimer;
+    private const double ThumbItemWidthDefault = 168;
+    private bool _playheadUIReady;                  // XAML 元素已就绪（InitializeComponent 后为 true）
     private Point _panStart;
     private Vector _panOrigin;
     private readonly DispatcherTimer _priorityTimer;
@@ -40,6 +45,7 @@ public partial class MainWindow : Window
     {
         _vm = vm;
         InitializeComponent();
+        _playheadUIReady = true;
 
         // 窗口图标：从内嵌资源读（XAML 里写相对路径会因中文资源名解析失败，这里用 pack URI + 兜底）
         try
@@ -210,6 +216,8 @@ public partial class MainWindow : Window
     private async void OnCurrentChanged()
     {
         ThumbList.SelectedItem = _vm.Current;
+        // 帧针模式下：程序化选图（键盘/单击/打开定位）也把这张图带到帧针正下方
+        if (_vm.Current != null) SyncNeedleToItem(_vm.Current);
         _priorityTimer.Stop();
         _priorityTimer.Start();
         await LoadImageAsync();
@@ -629,6 +637,157 @@ public partial class MainWindow : Window
         }
     }
 
+    // —————————————— 帧针模式（剪辑软件式滚动选图） ——————————————
+
+    private bool _needleAnchored = true;    // 帧针是否停在中线（true=判定生效；false=针画在当前图上，滚动即恢复）
+
+    private void OnPlayheadModeChecked(object sender, RoutedEventArgs e) => SetPlayheadMode(true);
+    private void OnPlayheadModeUnchecked(object sender, RoutedEventArgs e) => SetPlayheadMode(false);
+
+    private void SetNeedleVisual(double xInViewport)
+    {
+        if (PlayheadTranslate == null)
+        {
+            // 兜底：XAML 里的变换未就绪时直接赋一个
+            PlayheadTranslate = new TranslateTransform();
+            PlayheadHost.RenderTransform = PlayheadTranslate;
+        }
+        PlayheadTranslate.X = Math.Clamp(xInViewport, 1, Math.Max(1, ThumbList.ActualWidth - 1));
+        PlayheadHost.Visibility = Visibility.Visible;
+    }
+
+    private void SetPlayheadMode(bool on)
+    {
+        if (!_playheadUIReady || PlayheadHost == null) return;
+        PlayheadHost.Visibility = on ? Visibility.Visible : Visibility.Collapsed;
+        if (Session.Settings.PlayheadMode != on)
+        {
+            Session.Settings.PlayheadMode = on;
+            Session.Settings.Save();
+        }
+        if (_thumbScroll == null) _thumbScroll = FindScrollViewer(ThumbList);
+        if (_thumbScroll == null) return;
+        _thumbScroll.ScrollChanged -= OnThumbScrollChanged;
+        if (on)
+        {
+            _needleAnchored = true;
+            SetNeedleVisual(ThumbList.ActualWidth / 2);
+            _thumbScroll.ScrollChanged += OnThumbScrollChanged;
+            UpdatePlayhead();
+        }
+    }
+
+    private void OnThumbScrollChanged(object sender, ScrollChangedEventArgs e)
+    {
+        if (e.HorizontalChange == 0 && e.ViewportWidthChange == 0) return;
+        if (!_needleAnchored)
+        {
+            // 帧针此前"贴在当前图上"：用户一滚动，针回到中线，恢复判定
+            _needleAnchored = true;
+            SetNeedleVisual(ThumbList.ActualWidth / 2);
+        }
+        UpdatePlayhead();
+    }
+
+    /// <summary>帧针判定（仅当帧针在中线上时生效）：中线落在哪张缩略图范围内，当前项就是哪张。</summary>
+    private void UpdatePlayhead()
+    {
+        if (PlayheadModeToggle?.IsChecked != true || _needleSync || !_needleAnchored) return;
+        int n = Session.Items.Count;
+        if (n == 0) return;
+
+        var sv = _thumbScroll ??= FindScrollViewer(ThumbList);
+        if (sv == null) return;
+        double center = sv.HorizontalOffset + sv.ViewportWidth / 2;
+        int idx = (int)(center / ThumbItemWidth());
+        idx = Math.Clamp(idx, 0, n - 1);
+        var item = Session.Items[idx];
+        if (!ReferenceEquals(Session.Current, item))
+            Session.SetCurrent(item);
+    }
+
+    private double ThumbItemWidth()
+    {
+        int n = Math.Min(Session.Items.Count, 40);
+        for (int i = 0; i < n; i++)
+            if (ThumbList.ItemContainerGenerator.ContainerFromIndex(i) is ListBoxItem c && c.ActualWidth > 10)
+                return c.ActualWidth;
+        return ThumbItemWidthDefault;
+    }
+
+    /// <summary>
+    /// 帧针模式下：把指定图片带到帧针。
+    /// 优先滚动让它居中（帧针停在中线，判定继续）；如果在起点/终点无法居中（目标被夹到边界），
+    /// 则把帧针"画"到该图片所在位置并暂停判定，用户一滚动就恢复中线判定。
+    /// </summary>
+    private void SyncNeedleToItem(ImageItem item)
+    {
+        if (PlayheadModeToggle?.IsChecked != true || item == null) return;
+        if (ReferenceEquals(Session.Current, item)) return;   // 已是当前图，无需处理
+        var sv = _thumbScroll ??= FindScrollViewer(ThumbList);
+        if (sv == null) return;
+        int idx = Session.Items.IndexOf(item);
+        if (idx < 0) return;
+        double w = ThumbItemWidth();
+        double itemCenter = idx * w + w / 2;
+        double maxOffset = Math.Max(0, sv.ExtentWidth - sv.ViewportWidth);
+        double desired = itemCenter - sv.ViewportWidth / 2;
+        ArmNeedleSyncGuard();
+
+        if (desired >= 0 && desired <= maxOffset)
+        {
+            _needleAnchored = true;
+            SetNeedleVisual(sv.ViewportWidth / 2);
+            sv.ScrollToHorizontalOffset(desired);
+        }
+        else
+        {
+            double clamped = Math.Clamp(desired, 0, maxOffset);
+            sv.ScrollToHorizontalOffset(clamped);
+            _needleAnchored = false;
+            SetNeedleVisual(itemCenter - clamped);
+            YingShai.Core.Util.AppLog.Info($"帧针贴到当前图：{item.Name}（offset={clamped:F0}/{maxOffset:F0}，针位={itemCenter - clamped:F0}）");
+        }
+        // 帧针判定会随之把当前项带过来；若被边界夹住判定暂停，这里直接把当前项切过去
+        if (!ReferenceEquals(Session.Current, item))
+            Session.SetCurrent(item);
+    }
+
+    private void ArmNeedleSyncGuard()
+    {
+        _needleSync = true;
+        if (_needleSyncTimer == null)
+        {
+            _needleSyncTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(220) };
+            _needleSyncTimer.Tick += (_, _) =>
+            {
+                _needleSyncTimer.Stop();
+                _needleSync = false;
+            };
+        }
+        _needleSyncTimer.Stop();
+        _needleSyncTimer.Start();
+    }
+
+    /// <summary>验收：开关帧针模式（设置 IsChecked 触发真实 Checked/Unchecked 事件链）。</summary>
+    public void SetPlayheadForTest(bool on) { PlayheadModeToggle.IsChecked = on; }
+    /// <summary>验收：帧针是否可见。</summary>
+    public bool PlayheadVisibleForTest() => _playheadUIReady && PlayheadHost.Visibility == Visibility.Visible;
+    /// <summary>验收：把指定图片滚到帧针下（与鼠标拖动滚动条等效）。</summary>
+    public void CenterThumbForTest(ImageItem item) => SyncNeedleToItem(item);
+    /// <summary>验收：模拟按下空格键（走真实按键路由）。</summary>
+    public void PressSpaceForTest()
+    {
+        var source = PresentationSource.FromDependencyObject(this);
+        if (source == null) { MarkOrUnmarkCurrent(); return; }
+        var args = new KeyEventArgs(Keyboard.PrimaryDevice, source, 0, Key.Space)
+        {
+            RoutedEvent = UIElement.PreviewKeyDownEvent
+        };
+        RaiseEvent(args);
+    }
+
+
     /// <summary>
     /// 兜底：鼠标按下就先定位到被点中的缩略图，不依赖 ListBox 的选中机制
     /// （个别情况下（容器回收/焦点设置）选中事件可能不触发，这里直接看命中元素）。
@@ -798,6 +957,11 @@ public partial class MainWindow : Window
         bool ctrl = (Keyboard.Modifiers & ModifierKeys.Control) != 0;
         switch (e.Key)
         {
+            case Key.Space:
+                // 空格 = 双击缩略图（确认标记 / 取消标记）
+                MarkOrUnmarkCurrent();
+                e.Handled = true;
+                break;
             case Key.X:
             case Key.Enter:
                 if (!ctrl) { MarkOrUnmarkCurrent(); e.Handled = true; }
@@ -815,7 +979,6 @@ public partial class MainWindow : Window
                 Navigate(-1); e.Handled = true;
                 break;
             case Key.Right:
-            case Key.Space:
                 Navigate(1); e.Handled = true;
                 break;
             case Key.Home:
@@ -881,6 +1044,7 @@ public partial class MainWindow : Window
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
         OnSortDirChanged();
+        PlayheadModeToggle.IsChecked = Session.Settings.PlayheadMode;
         UpdateEmptyHint();
         Activate();
     }

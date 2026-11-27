@@ -125,6 +125,10 @@
                 <Rectangle DockPanel.Dock="Left" Width="1" Fill="#3A3A44" Margin="8,2,10,2"/>
                 <CheckBox x:Name="MoveModeCheck" DockPanel.Dock="Left" VerticalAlignment="Center" Foreground="#EDEDED"
                           Content="标记时移动（默认复制）" IsChecked="{Binding MarkByMove, Mode=TwoWay}" Margin="0,0,12,0"/>
+                <CheckBox x:Name="PlayheadModeToggle" DockPanel.Dock="Left" VerticalAlignment="Center" Foreground="#EDEDED"
+                          Content="帧针模式" Margin="0,0,12,0"
+                          Checked="OnPlayheadModeChecked" Unchecked="OnPlayheadModeUnchecked"
+                          ToolTip="开启后：滚动下方缩略图条，中线（帧针）对准哪张，上方就显示哪张；空格键快速标记当前图"/>
 
                 <TextBlock DockPanel.Dock="Right" Text="{Binding CountText}" FontSize="15" FontWeight="SemiBold"
                            Foreground="{StaticResource GreenBrush}" VerticalAlignment="Center" Margin="12,0,0,0"/>
@@ -155,7 +159,7 @@
 
             <TextBlock x:Name="EmptyHint" HorizontalAlignment="Center" VerticalAlignment="Center"
                        Foreground="#6A6A78" FontSize="15" TextAlignment="Center"
-                       Text="把文件夹拖进来，或点左上角「打开文件夹」&#10;（← → 切图，X / Enter 标记，Ctrl+Z 撤销）"/>
+                       Text="把文件夹拖进来，或点左上角「打开文件夹」&#10;（单击查看 · X / 空格 / Enter 标记 · ← → 切图 · Ctrl+Z 撤销）"/>
             <TextBlock x:Name="LoadingHint" HorizontalAlignment="Center" VerticalAlignment="Center"
                        Foreground="#9CC7FF" FontSize="14" Visibility="Collapsed" Text="正在解码…"/>
 
@@ -232,7 +236,8 @@
 
         <!-- ============ 横向缩略图条 ============ -->
         <Border Grid.Row="2" Grid.ColumnSpan="2" Background="#17171B" BorderBrush="#33333C" BorderThickness="0,1,0,0">
-            <ListBox x:Name="ThumbList" Height="200" Background="Transparent" BorderThickness="0"
+            <Grid>
+                <ListBox x:Name="ThumbList" Height="200" Background="Transparent" BorderThickness="0"
                      ItemsSource="{Binding Items}" SelectedItem="{Binding Current, Mode=TwoWay}"
                      SelectionMode="Single" ScrollViewer.HorizontalScrollBarVisibility="Auto"
                      ScrollViewer.VerticalScrollBarVisibility="Disabled"
@@ -284,7 +289,7 @@
 
                             <Grid.ContextMenu>
                                 <ContextMenu>
-                                    <MenuItem Header="移入筛选（X / Enter）" Click="OnMenuMark"/>
+                                    <MenuItem Header="移入筛选（X / 空格 / Enter）" Click="OnMenuMark"/>
                                     <MenuItem Header="取消筛选" Click="OnMenuUnmark"/>
                                     <Separator/>
                                     <MenuItem Header="在资源管理器中显示" Click="OnMenuReveal"/>
@@ -294,6 +299,19 @@
                     </DataTemplate>
                 </ListBox.ItemTemplate>
             </ListBox>
+
+            <!-- 帧针：中线 + 顶部三角（帧针模式开启时显示；起点/终点够不着居中时会画到当前图上） -->
+            <Grid x:Name="PlayheadHost" Panel.ZIndex="2" IsHitTestVisible="False" Visibility="Collapsed"
+                  HorizontalAlignment="Left" VerticalAlignment="Stretch" Width="0">
+                <Grid.RenderTransform>
+                    <TranslateTransform x:Name="PlayheadTranslate" X="0" Y="0"/>
+                </Grid.RenderTransform>
+                <Rectangle Width="2" HorizontalAlignment="Left" VerticalAlignment="Stretch"
+                           Margin="0,14,0,16" Fill="#FFC24B"/>
+                <Polygon Points="0,0 14,0 7,12" Fill="#FFC24B" HorizontalAlignment="Left"
+                         VerticalAlignment="Top" Margin="-6,1,0,0"/>
+            </Grid>
+        </Grid>
         </Border>
 
         <!-- ============ 状态栏 ============ -->

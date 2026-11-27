@@ -20,6 +20,8 @@ public sealed class AppSettings
 
     /// <summary>标记动作：复制（默认）或移动。</summary>
     public MarkMode MarkMode { get; set; } = MarkMode.Copy;
+    /// <summary>缩略图条「帧针模式」：中线对准哪张就查看哪张（默认关）。</summary>
+    public bool PlayheadMode { get; set; }
     /// <summary>磁盘缩略图缓存上限（GB）。</summary>
     public double CacheLimitGb { get; set; } = 5.0;
     /// <summary>内存预览缓存上限（MB）。</summary>
