@@ -20,8 +20,10 @@ public sealed class AppSettings
 
     /// <summary>标记动作：复制（默认）或移动。</summary>
     public MarkMode MarkMode { get; set; } = MarkMode.Copy;
-    /// <summary>缩略图条「帧针模式」：中线对准哪张就查看哪张（默认关）。</summary>
-    public bool PlayheadMode { get; set; }
+    /// <summary>缩略图条「帧针模式」：中线对准哪张就查看哪张（默认开）。</summary>
+    public bool PlayheadMode { get; set; } = true;
+    /// <summary>设置结构版本（升级迁移用）。</summary>
+    public int SettingsVersion { get; set; } = 2;
     /// <summary>磁盘缩略图缓存上限（GB）。</summary>
     public double CacheLimitGb { get; set; } = 5.0;
     /// <summary>内存预览缓存上限（MB）。</summary>
@@ -54,7 +56,12 @@ public sealed class AppSettings
             {
                 var json = File.ReadAllText(AppPaths.SettingsFile);
                 var s = JsonSerializer.Deserialize<AppSettings>(json, JsonOpts);
-                if (s != null) return s;
+                if (s != null)
+                {
+                    // 迁移：1.0.6 及之前没有帧针模式（且显式保存过 false），升级后默认开启
+                    if (s.Version < 2) { s.PlayheadMode = true; s.Version = 2; }
+                    return s;
+                }
             }
         }
         catch { /* 设置损坏时用默认值，不阻塞启动 */ }

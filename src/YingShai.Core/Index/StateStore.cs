@@ -67,6 +67,17 @@ public sealed class StateStore : IDisposable
               last_used INTEGER NOT NULL DEFAULT 0,
               decoder_ver INTEGER NOT NULL DEFAULT 0
             );
+            CREATE TABLE IF NOT EXISTS locks(
+              folder_id INTEGER NOT NULL,
+              item TEXT NOT NULL,
+              PRIMARY KEY(folder_id, item)
+            );
+            CREATE TABLE IF NOT EXISTS stars(
+              folder_id INTEGER NOT NULL,
+              item TEXT NOT NULL,
+              stars INTEGER NOT NULL,
+              PRIMARY KEY(folder_id, item)
+            );
             """);
     }
 
@@ -259,6 +270,48 @@ public sealed class StateStore : IDisposable
 
     public int CountCache()
         => Query("SELECT COUNT(*) FROM cache", r => r.Read() ? r.GetInt32(0) : 0);
+
+    // ——— 保护（锁定）与星级 ———
+
+    public HashSet<string> GetLockedItems(int folderId)
+        => Query("SELECT item FROM locks WHERE folder_id=$f",
+            r =>
+            {
+                var s = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                while (r.Read()) s.Add(r.GetString(0));
+                return s;
+            },
+            c => c.Parameters.AddWithValue("$f", folderId));
+
+    public void SetLock(int folderId, string item, bool locked)
+    {
+        if (locked)
+            Exec("INSERT OR REPLACE INTO locks(folder_id, item) VALUES($f, $i)",
+                c => { c.Parameters.AddWithValue("$f", folderId); c.Parameters.AddWithValue("$i", item); });
+        else
+            Exec("DELETE FROM locks WHERE folder_id=$f AND item=$i",
+                c => { c.Parameters.AddWithValue("$f", folderId); c.Parameters.AddWithValue("$i", item); });
+    }
+
+    public Dictionary<string, int> GetStars(int folderId)
+        => Query("SELECT item, stars FROM stars WHERE folder_id=$f",
+            r =>
+            {
+                var d = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+                while (r.Read()) d[r.GetString(0)] = r.GetInt32(1);
+                return d;
+            },
+            c => c.Parameters.AddWithValue("$f", folderId));
+
+    public void SetStar(int folderId, string item, int stars)
+    {
+        if (stars <= 0)
+            Exec("DELETE FROM stars WHERE folder_id=$f AND item=$i",
+                c => { c.Parameters.AddWithValue("$f", folderId); c.Parameters.AddWithValue("$i", item); });
+        else
+            Exec("INSERT OR REPLACE INTO stars(folder_id, item, stars) VALUES($f, $i, $s)",
+                c => { c.Parameters.AddWithValue("$f", folderId); c.Parameters.AddWithValue("$i", item); c.Parameters.AddWithValue("$s", stars); });
+    }
 
     public void Dispose()
     {

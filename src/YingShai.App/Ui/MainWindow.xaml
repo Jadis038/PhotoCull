@@ -132,6 +132,8 @@
 
                 <TextBlock DockPanel.Dock="Right" Text="{Binding CountText}" FontSize="15" FontWeight="SemiBold"
                            Foreground="{StaticResource GreenBrush}" VerticalAlignment="Center" Margin="12,0,0,0"/>
+                <Button DockPanel.Dock="Right" Style="{StaticResource ToolButton}" Click="OnShowShortcuts" Content="快捷键" Margin="12,0,0,0"
+                        ToolTip="查看全部键盘与鼠标快捷键"/>
                 <Button DockPanel.Dock="Right" Style="{StaticResource ToolButton}" Click="OnUndo" Content="{Binding UndoText}"
                         IsEnabled="{Binding CanUndo}" ToolTip="Ctrl+Z"/>
             </DockPanel>
@@ -214,6 +216,12 @@
                     <TextBlock Text="色彩空间" Style="{StaticResource InfoLabel}"/>
                     <TextBlock Text="{Binding CurrentInfo.DisplayColorSpace}" Style="{StaticResource InfoValue}"/>
 
+                    <TextBlock Text="保护" Style="{StaticResource InfoLabel}"/>
+                    <TextBlock Text="{Binding Current.LockedText}" Style="{StaticResource InfoValue}"/>
+
+                    <TextBlock Text="星级" Style="{StaticResource InfoLabel}"/>
+                    <TextBlock Text="{Binding Current.StarsText}" Style="{StaticResource InfoValue}" Foreground="#FFD479" FontSize="14"/>
+
                     <TextBlock Text="状态" Style="{StaticResource InfoLabel}"/>
                     <TextBlock Text="{Binding Current.StatusText}" Style="{StaticResource InfoValue}" Foreground="#FFB86B" TextWrapping="Wrap"/>
 
@@ -271,6 +279,38 @@
                             <TextBlock Text="{Binding StatusText}" Foreground="#FF9B5A" FontSize="9.5" Margin="8,0,8,6"
                                        VerticalAlignment="Bottom" TextTrimming="CharacterEllipsis"/>
 
+                            <!-- 保护（锁定）与星级角标：锁定或已标星时显示 -->
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Left" VerticalAlignment="Top"
+                                        Margin="9,8,0,0">
+                                <StackPanel.Style>
+                                    <Style TargetType="StackPanel">
+                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                        <Style.Triggers>
+                                            <MultiDataTrigger>
+                                                <MultiDataTrigger.Conditions>
+                                                    <Condition Binding="{Binding Locked}" Value="False"/>
+                                                    <Condition Binding="{Binding Stars}" Value="0"/>
+                                                </MultiDataTrigger.Conditions>
+                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                            </MultiDataTrigger>
+                                            <DataTrigger Binding="{Binding Stars}" Value="0">
+                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                            </DataTrigger>
+                                            <DataTrigger Binding="{Binding Locked}" Value="True">
+                                                <Setter Property="Visibility" Value="Visible"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </StackPanel.Style>
+                                <TextBlock Text="🔒" FontSize="10.5" Margin="0,0,4,0"
+                                           Visibility="{Binding Locked, Converter={StaticResource BoolToVis}}"
+                                           ToolTip="已保护（不会被取消筛选）"/>
+                                <TextBlock Text="{Binding Stars, StringFormat=★{0}★}"
+                                           FontSize="10.5" Foreground="#FFD479"
+                                           Visibility="{Binding HasStars, Converter={StaticResource BoolToVis}}"
+                                           ToolTip="星级"/>
+                            </StackPanel>
+
                             <!-- 已标记：右上角绿色对勾角标 -->
                             <Border HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,10,10,0"
                                     Width="24" Height="24" CornerRadius="12" Background="{StaticResource GreenBrush}"
@@ -289,7 +329,7 @@
 
                             <Grid.ContextMenu>
                                 <ContextMenu>
-                                    <MenuItem Header="移入筛选（X / 空格 / Enter）" Click="OnMenuMark"/>
+                                    <MenuItem Header="移入筛选（X / 空格）" Click="OnMenuMark"/>
                                     <MenuItem Header="取消筛选" Click="OnMenuUnmark"/>
                                     <Separator/>
                                     <MenuItem Header="在资源管理器中显示" Click="OnMenuReveal"/>

@@ -18,7 +18,8 @@ public sealed class PhotoMetadata
     public DateTime? TakenAt { get; init; }
     public int? PixelWidth { get; init; }
     public int? PixelHeight { get; init; }
-    public string? ColorSpace { get; init; }
+    /// <summary>色彩空间（可写：解码编排会用 TIFF 标签/配置名补齐）。</summary>
+    public string? ColorSpace { get; set; }
     /// <summary>EXIF 方向 1..8。</summary>
     public int Orientation { get; init; } = 1;
 

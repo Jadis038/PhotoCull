@@ -136,6 +136,8 @@ public sealed class MarkService
     public Task<OpResult> UnmarkAsync(ImageItem item)
     {
         if (item.Record == null) return Task.FromResult(OpResult.Fail("这张图没有可取消的标记"));
+        if (item.Locked)
+            return Task.FromResult(OpResult.Fail("该图已被保护锁定（按 S 解锁后再取消）"));
 
         // 若还有排队/进行中的标记任务，先取消（正在复制的任务会自行清理 .part）
         _queue.CancelFor(item);

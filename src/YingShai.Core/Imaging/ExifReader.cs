@@ -69,7 +69,8 @@ public static class ExifReader
             Iso = Num(md, "/app1/ifd/exif/{ushort=34855}"),
             FocalLength = Num(md, "/app1/ifd/exif/{ushort=37386}"),
             FocalLength35 = Num(md, "/app1/ifd/exif/{ushort=41989}"),
-            ColorSpace = Num(md, "/app1/ifd/exif/{ushort=40961}"),
+            // 色彩空间：正常在 Exif IFD；个别写入方放在 IFD0，兜底查询
+            ColorSpace = Num(md, "/app1/ifd/exif/{ushort=40961}") ?? Num(md, "/app1/ifd/{ushort=40961}"),
             PixelX = Num(md, "/app1/ifd/exif/{ushort=40962}"),
             PixelY = Num(md, "/app1/ifd/exif/{ushort=40963}"),
         };

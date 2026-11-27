@@ -1,9 +1,9 @@
-# PhotoCull（影·筛）
+﻿# PhotoCull（影·筛）
 
 > Windows 图片快速筛选工具：一次打开几千张 RAW，单击查看、双击标记，选中的图自动复制进「筛选」文件夹。
 > 应用名「影·筛」（中间是 U+00B7 间隔号），PhotoCull 是本仓库/发行名。**macOS 版规划中**（见下方 Roadmap）。
 
-[![Release](https://img.shields.io/badge/release-v1.0.5-blue)](../../releases/latest)
+[![Release](https://img.shields.io/badge/release-v1.0.7-blue)](../../releases/latest)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Windows%2010%2021H2%2B%20x64-lightgrey)](#系统要求)
 
@@ -42,12 +42,16 @@
 | 操作 | 方式 |
 |---|---|
 | 查看某张图 | 单击缩略图 |
-| 标记 / 取消标记 | 双击缩略图 / `X` / `空格` / `Enter`（画面停留在当前图） |
+| 标记 / 取消标记 | 双击缩略图 / `X` / `空格` / `Enter`…（Enter 已改为全屏，标记用 `X` / `空格` 最顺手） |
 | 上一张 / 下一张 | `←` `→` |
 | 撤销 | `Ctrl+Z` |
-| 帧针模式（可切换） | 工具栏勾选后：滚动缩略图条，中线（帧针）对准哪张就查看哪张 |
+| 帧针模式（默认开启，可切换） | 工具栏勾选后：滚动缩略图条，中线（帧针）对准哪张就查看哪张 |
 | 大图 100% ↔ 适应窗口 | 双击大图（以双击点为锚） |
-| 大图缩放 / 平移 | `Alt+滚轮` 缩放 · `Ctrl+滚轮` 左右 · 滚轮上下 · 左键拖动（Photoshop 手感） |
+| 大图缩放 / 平移 | `↑` 放大 · `↓` 缩小（约 10%） · `Alt+滚轮` 缩放 · `Ctrl+滚轮` 左右 · 滚轮上下 · 左键拖动 |
+| 保护（锁定）当前图 | `S` —— 受保护的图不会被取消筛选/删除副本 |
+| 标星级 | `1~5`（含小键盘）标 1~5 星，再按同键清除 |
+| 全屏 | `Enter`（最大化到工作区，不覆盖任务栏） |
+| 查看全部快捷键 | 工具栏【快捷键】按钮 |
 | 打开文件夹 | 按钮 / `Ctrl+O` / 拖拽 / 资源管理器"打开方式" |
 
 ## 支持的格式

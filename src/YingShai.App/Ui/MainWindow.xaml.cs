@@ -287,14 +287,19 @@ public partial class MainWindow : Window
     private void UpdateEmptyHint()
         => EmptyHint.Visibility = _vm.LargeImage == null && Session.TotalCount == 0 ? Visibility.Visible : Visibility.Collapsed;
 
-    /// <summary>切到 100%：后台全解（45MP 约 1~3 秒），期间界面照常可用。</summary>
-    private async Task EnsureFullResAsync()
+    /// <summary>
+    /// 切到 100%/高清原图：后台全解（45MP 约 1~3 秒），期间界面照常可用。
+    /// applyActual=true（双击 100%）会把缩放重置为像素 1:1；
+    /// applyActual=false（键盘/滚轮放大到 95%+ 时）只把画面换成原图细节，按分辨率比例
+    /// 补偿虚拟画布缩放与平移，视觉上不跳动。
+    /// </summary>
+    private async Task EnsureFullResAsync(bool applyActual = true)
     {
         var item = _vm.Current;
         if (item == null) return;
         // 只有"当前这张图"的全解缓存才有效（_fullResFor 记录它属于哪个文件）
         if (_vm.FullImage != null && _fullResFor == item.FullPath) return;
-        _vm.StatusText = "正在后台解码原图（100%）…";
+        _vm.StatusText = "正在后台解码原图…";
         try
         {
             var full = await Session.GetFullResAsync(item, CancellationToken.None);
@@ -303,9 +308,24 @@ public partial class MainWindow : Window
             {
                 _vm.FullImage = full;
                 _fullResFor = item.FullPath;
-                _vm.LargeImage = full;
-                _vm.StatusText = $"100% 原图已就绪（{full.PixelWidth}×{full.PixelHeight}）";
-                ApplyActual();
+                var old = _vm.LargeImage;
+                if (!applyActual && old != null && old.PixelWidth > 0)
+                {
+                    // 无缝换高清：按宽度比例放大虚拟画布（预览图与原图同为一张画面）
+                    double ratio = (double)full.PixelWidth / old.PixelWidth;
+                    _viewScale *= ratio;
+                    _viewTx *= ratio;
+                    _viewTy *= ratio;
+                    _vm.LargeImage = full;
+                    ApplyView();
+                    _vm.StatusText = $"已切换为原图细节（{full.PixelWidth}×{full.PixelHeight}）";
+                }
+                else
+                {
+                    _vm.LargeImage = full;
+                    ApplyActual();
+                    _vm.StatusText = $"100% 原图已就绪（{full.PixelWidth}×{full.PixelHeight}）";
+                }
             }
             else _vm.StatusText = "原图解码失败";
         }
@@ -547,6 +567,9 @@ public partial class MainWindow : Window
 
     private void OnZoomFit(object sender, RoutedEventArgs e) => ApplyFit();
 
+    /// <summary>「快捷键」按钮：打开快捷键说明窗口。</summary>
+    private void OnShowShortcuts(object sender, RoutedEventArgs e) => ShortcutsWindow.Show(this);
+
     /// <summary>
     /// 双击切换：100%（像素 1:1，必要时后台全解原图）↔ 适应窗口。
     /// 放大时以双击点为锚，让光标下那块内容留在光标位置。
@@ -598,6 +621,12 @@ public partial class MainWindow : Window
         if (item.State is MarkState.Queued or MarkState.Working) return;
 
         bool wasMarked = item.State == MarkState.Marked;
+        if (wasMarked && item.Locked)
+        {
+            // 受保护的图：不允许取消筛选（防止误删副本）
+            _vm.StatusText = "该图已被保护锁定 —— 按 S 解锁后再取消筛选";
+            return;
+        }
         var result = await Session.ToggleMarkAsync(item);
         item.ApplyMarkVisual();
         _vm.RaiseCounts();
@@ -775,17 +804,29 @@ public partial class MainWindow : Window
     public bool PlayheadVisibleForTest() => _playheadUIReady && PlayheadHost.Visibility == Visibility.Visible;
     /// <summary>验收：把指定图片滚到帧针下（与鼠标拖动滚动条等效）。</summary>
     public void CenterThumbForTest(ImageItem item) => SyncNeedleToItem(item);
-    /// <summary>验收：模拟按下空格键（走真实按键路由）。</summary>
-    public void PressSpaceForTest()
+    /// <summary>验收：模拟按下指定按键（走真实按键路由；无输入源时直接调用处理器兜底）。</summary>
+    public void PressKeyForTest(Key key)
     {
         var source = PresentationSource.FromDependencyObject(this);
-        if (source == null) { MarkOrUnmarkCurrent(); return; }
-        var args = new KeyEventArgs(Keyboard.PrimaryDevice, source, 0, Key.Space)
+        if (source == null)
+        {
+            // 无输入源（离屏渲染）：按语义兜底
+            if (key == Key.Space) MarkOrUnmarkCurrent();
+            else if (key == Key.S) ToggleProtect();
+            else if (key == Key.Enter) ToggleFullscreen();
+            else if (key == Key.Up) ZoomStep(1.10);
+            else if (key == Key.Down) ZoomStep(1 / 1.10);
+            return;
+        }
+        var args = new KeyEventArgs(Keyboard.PrimaryDevice, source, 0, key)
         {
             RoutedEvent = UIElement.PreviewKeyDownEvent
         };
         RaiseEvent(args);
     }
+
+    /// <summary>验收：模拟按下空格键（走真实按键路由）。</summary>
+    public void PressSpaceForTest() => PressKeyForTest(Key.Space);
 
 
     /// <summary>
@@ -963,8 +1004,29 @@ public partial class MainWindow : Window
                 e.Handled = true;
                 break;
             case Key.X:
-            case Key.Enter:
                 if (!ctrl) { MarkOrUnmarkCurrent(); e.Handled = true; }
+                break;
+            case Key.S:
+                if (!ctrl) { ToggleProtect(); e.Handled = true; }
+                break;
+            case Key.Enter:
+                // Enter = 全屏切换（最大化到工作区，不覆盖任务栏），支持快速连按
+                ToggleFullscreen(); e.Handled = true;
+                break;
+            case Key.D1: case Key.D2: case Key.D3: case Key.D4: case Key.D5:
+                SetStarsCurrent(e.Key - Key.D1 + 1); e.Handled = true;
+                break;
+            case Key.NumPad1: case Key.NumPad2: case Key.NumPad3:
+            case Key.NumPad4: case Key.NumPad5:
+                SetStarsCurrent(e.Key - Key.NumPad1 + 1); e.Handled = true;
+                break;
+            case Key.Up:
+                // 方向键上：大图放大（约 10%）
+                ZoomStep(1.10); e.Handled = true;
+                break;
+            case Key.Down:
+                // 方向键下：大图缩小（约 10%）
+                ZoomStep(1 / 1.10); e.Handled = true;
                 break;
             case Key.Z:
                 if (ctrl) { OnUndo(this, new RoutedEventArgs()); e.Handled = true; }
@@ -993,10 +1055,6 @@ public partial class MainWindow : Window
             case Key.NumPad0:
                 ApplyFit(); e.Handled = true;
                 break;
-            case Key.D1:
-            case Key.NumPad1:
-                OnZoomActual(this, new RoutedEventArgs()); e.Handled = true;
-                break;
             case Key.OemPlus:
             case Key.Add:
                 ZoomAt(new Point(ImageArea.ActualWidth / 2, ImageArea.ActualHeight / 2), 1.25); e.Handled = true;
@@ -1006,6 +1064,38 @@ public partial class MainWindow : Window
                 ZoomAt(new Point(ImageArea.ActualWidth / 2, ImageArea.ActualHeight / 2), 0.8); e.Handled = true;
                 break;
         }
+    }
+
+    /// <summary>键盘 ↑/↓：以画面中心为锚缩放约 10%；缩放到 95% 以上时后台换原图细节（不改变当前缩放）。</summary>
+    private void ZoomStep(double factor)
+    {
+        if (_vm.LargeImage == null) return;
+        ZoomAt(new Point(ImageArea.ActualWidth / 2, ImageArea.ActualHeight / 2), factor);
+        if (_viewScale >= 0.95) _ = EnsureFullResAsync(applyActual: false);
+    }
+
+    /// <summary>Enter：窗口最大化（不覆盖任务栏）↔ 还原，可快速连按。</summary>
+    private void ToggleFullscreen()
+        => WindowState = WindowState == WindowState.Maximized ? WindowState.Normal : WindowState.Maximized;
+
+    /// <summary>S：保护（锁定）当前图——受保护的图不会被取消筛选/删除副本，再按 S 解锁。</summary>
+    private void ToggleProtect()
+    {
+        var item = _vm.Current;
+        if (item == null) return;
+        bool locked = Session.ToggleLock(item);
+        _vm.StatusText = locked
+            ? $"已保护（锁定）：{item.Name} —— 按 X / 空格 不会再取消，再按 S 解锁"
+            : $"已解除保护：{item.Name}";
+    }
+
+    /// <summary>数字键 1~5：设置星级；再按同一数字清除。</summary>
+    private void SetStarsCurrent(int stars)
+    {
+        var item = _vm.Current;
+        if (item == null) return;
+        Session.SetStars(item, stars);
+        _vm.StatusText = item.Stars > 0 ? $"已标 {item.Stars} 星：{item.Name}" : $"已清除星级：{item.Name}";
     }
 
     private void Navigate(int delta)

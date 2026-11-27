@@ -71,6 +71,7 @@ public static class ImageDecoder
             {
                 var d = WicImage.DecodeScaled(preview.JpegData, maxSide);
                 var merged = Merge(meta, d.Exif, d.SourceWidth, d.SourceHeight);
+                // 色彩空间：文件里没有明确标签就不猜，保持"—"（用户要求）
                 sw.Stop();
                 return new DecodeOutcome
                 {
@@ -104,6 +105,8 @@ public static class ImageDecoder
             }
             var small = WicImage.ScaleToMaxSide(full, maxSide);
             sw.Stop();
+            // demosaic 输出即 sRGB（output_color=1），可如实标注
+            meta.ColorSpace ??= "sRGB";
             return new DecodeOutcome
             {
                 Bitmap = small, Metadata = meta, Source = DecodeSource.LibRawFullSlow,
@@ -163,6 +166,15 @@ public static class ImageDecoder
             using (img)
             {
                 var meta = img.ReadMetadata();
+
+                // 色彩空间兜底：LibRaw 不直接提供时，读 RAW 自身 TIFF 标签
+                //（ColorSpace 40961 / DNG AsShotProfileName）
+                if (meta.ColorSpace == null)
+                {
+                    var (cs, prof) = TiffRawTags.ReadColorSpaceTags(path);
+                    if (cs != null) meta.ColorSpace = ExifReader.ColorSpaceName(cs);
+                    else if (!string.IsNullOrWhiteSpace(prof)) meta.ColorSpace = prof;
+                }
 
                 // ① 内嵌全尺寸 JPEG 快路径
                 var preview = img.TryReadPreview(out _);
@@ -236,7 +248,7 @@ public static class ImageDecoder
             TakenAt = taken,
             PixelWidth = w,
             PixelHeight = h,
-            ColorSpace = ExifReader.ColorSpaceName(exif.ColorSpace),
+            ColorSpace = raw.ColorSpace ?? ExifReader.ColorSpaceName(exif.ColorSpace),
             Orientation = exif.Orientation
         };
     }

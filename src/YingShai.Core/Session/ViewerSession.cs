@@ -128,6 +128,15 @@ public sealed class ViewerSession : IDisposable
         ApplyMarks(items, marks);
         await CheckConsistencyAsync(items, ct).ConfigureAwait(false);
 
+        // 恢复保护（锁定）与星级
+        var lockedSet = Store.GetLockedItems(FolderId);
+        var starMap = Store.GetStars(FolderId);
+        foreach (var it in items)
+        {
+            it.Locked = lockedSet.Contains(it.Name);
+            if (starMap.TryGetValue(it.Name, out var st)) it.Stars = Math.Clamp(st, 0, 5);
+        }
+
         SortItems(items);
         for (int i = 0; i < items.Count; i++) items[i].Index = i;
 
@@ -441,6 +450,27 @@ public sealed class ViewerSession : IDisposable
             : await Marks.MarkAsync(item).ConfigureAwait(false);
         CountsChanged?.Invoke(this, EventArgs.Empty);
         return r;
+    }
+
+    // ——— 保护（锁定）与星级 ———
+
+    /// <summary>切换当前文件夹里某张图的保护（锁定）状态，立即写库。受保护的图不会被取消筛选。</summary>
+    public bool ToggleLock(ImageItem item)
+    {
+        item.Locked = !item.Locked;
+        Store.SetLock(FolderId, item.Name, item.Locked);
+        YingShai.Core.Util.AppLog.Info($"{(item.Locked ? "保护" : "解除保护")}：{item.Name}");
+        return item.Locked;
+    }
+
+    /// <summary>设置星级（1~5；与当前相同则清零），立即写库。</summary>
+    public void SetStars(ImageItem item, int stars)
+    {
+        if (item.Stars == stars) stars = 0;
+        stars = Math.Clamp(stars, 0, 5);
+        item.Stars = stars;
+        Store.SetStar(FolderId, item.Name, stars);
+        YingShai.Core.Util.AppLog.Info($"星级：{item.Name} = {stars} 星");
     }
 
     public void Dispose()

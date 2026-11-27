@@ -50,6 +50,31 @@ public sealed class ImageItem : INotifyPropertyChanged
         }
     }
 
+    private bool _locked;
+    /// <summary>保护（锁定）：受保护的图不会被取消筛选/删除副本。</summary>
+    public bool Locked
+    {
+        get => _locked;
+        set { if (Set(ref _locked, value)) OnPropertyChanged(nameof(LockedText)); }
+    }
+
+    /// <summary>信息栏「保护」行文字。</summary>
+    public string LockedText => Locked ? "🔒 已保护（S 解锁）" : "—";
+
+    private int _stars;
+    /// <summary>星级 0~5。</summary>
+    public int Stars
+    {
+        get => _stars;
+        set { if (Set(ref _stars, value)) { OnPropertyChanged(nameof(StarsText)); OnPropertyChanged(nameof(HasStars)); } }
+    }
+
+    /// <summary>是否已标星（缩略图角标可见性绑定用）。</summary>
+    public bool HasStars => Stars > 0;
+
+    /// <summary>信息栏「星级」行文字。</summary>
+    public string StarsText => Stars > 0 ? new string('★', Stars) : "—";
+
     public bool IsMarked => _state == MarkState.Marked;
     public bool IsBusy => _state is MarkState.Queued or MarkState.Working;
 
