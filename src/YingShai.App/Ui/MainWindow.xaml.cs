@@ -1,6 +1,7 @@
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Runtime.InteropServices;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
@@ -34,6 +35,7 @@ public partial class MainWindow : Window
     private DispatcherTimer? _needleSyncTimer;
     private const double ThumbItemWidthDefault = 168;
     private bool _playheadUIReady;                  // XAML 元素已就绪（InitializeComponent 后为 true）
+    private double _zoomRefW;                       // 原图全分辨率宽度（缩放百分比统一以它为基准）
     private Point _panStart;
     private Vector _panOrigin;
     private readonly DispatcherTimer _priorityTimer;
@@ -256,6 +258,10 @@ public partial class MainWindow : Window
                 _vm.StatusText = $"无法解码：{item.Name}";
             }
             if (item.Metadata == null) { await FillMetadataAsync(item); _vm.RefreshInfo(); }
+            // 缩放百分比统一以原图全分辨率为基准
+            if (item.Metadata?.PixelWidth is > 0) _zoomRefW = item.Metadata.PixelWidth.Value;
+            // 缩放百分比统一以原图全分辨率为基准
+            _zoomRefW = item.Metadata?.PixelWidth ?? _vm.LargeImage?.PixelWidth ?? 0;
         }
         catch (OperationCanceledException) { }
         catch (Exception ex) { _vm.StatusText = "加载失败：" + ex.Message; }
@@ -290,15 +296,18 @@ public partial class MainWindow : Window
     /// <summary>
     /// 切到 100%/高清原图：后台全解（45MP 约 1~3 秒），期间界面照常可用。
     /// applyActual=true（双击 100%）会把缩放重置为像素 1:1；
-    /// applyActual=false（键盘/滚轮放大到 95%+ 时）只把画面换成原图细节，按分辨率比例
-    /// 补偿虚拟画布缩放与平移，视觉上不跳动。
+    /// applyActual=false（放大过程中无缝换原图）只把画面换成原图细节——
+    /// 预览图（如 1024px）换成原图（如 8256px）时，缩放按分辨率比例【缩小】、平移不变，
+    /// 视觉完全一致（曾踩坑：写成乘以比例会让画面瞬间放大 8 倍且偏离中心）。
+    /// onlyWhenZoomed=true 时仅在放大到一定程度后才换（避免缩得很小时白白解码）。
     /// </summary>
-    private async Task EnsureFullResAsync(bool applyActual = true)
+    private async Task EnsureFullResAsync(bool applyActual = true, bool onlyWhenZoomed = false)
     {
         var item = _vm.Current;
         if (item == null) return;
         // 只有"当前这张图"的全解缓存才有效（_fullResFor 记录它属于哪个文件）
         if (_vm.FullImage != null && _fullResFor == item.FullPath) return;
+        if (onlyWhenZoomed && _viewScale < 1.2) return;
         _vm.StatusText = "正在后台解码原图…";
         try
         {
@@ -311,11 +320,9 @@ public partial class MainWindow : Window
                 var old = _vm.LargeImage;
                 if (!applyActual && old != null && old.PixelWidth > 0)
                 {
-                    // 无缝换高清：按宽度比例放大虚拟画布（预览图与原图同为一张画面）
-                    double ratio = (double)full.PixelWidth / old.PixelWidth;
-                    _viewScale *= ratio;
-                    _viewTx *= ratio;
-                    _viewTy *= ratio;
+                    // 无缝换高清：显示尺寸不变 → 缩放除以分辨率比例；平移（屏幕绝对坐标）不变
+                    double ratio = old.PixelWidth > 0 ? (double)full.PixelWidth / old.PixelWidth : 1.0;
+                    if (ratio > 0) _viewScale /= ratio;
                     _vm.LargeImage = full;
                     ApplyView();
                     _vm.StatusText = $"已切换为原图细节（{full.PixelWidth}×{full.PixelHeight}）";
@@ -368,10 +375,21 @@ public partial class MainWindow : Window
         ApplyView();
     }
 
+    /// <summary>
+    /// 缩放百分比：统一以【原图全分辨率】为基准（跨"预览图↔原图"无缝换图连续）。
+    /// </summary>
+    private double ZoomPct()
+    {
+        var img = _vm.LargeImage;
+        if (img == null) return 100.0;
+        double refW = _zoomRefW > 0 ? _zoomRefW : img.PixelWidth;
+        return refW > 0 ? _viewScale * img.PixelWidth / refW * 100.0 : _viewScale * 100.0;
+    }
+
     private void ApplyFree()
     {
         if (_vm.LargeImage == null) return;
-        _vm.ZoomText = $"自由缩放 {_viewScale * 100:F0}%";
+        _vm.ZoomText = $"自由缩放 {ZoomPct():F0}%";
         ApplyView();
     }
 
@@ -501,9 +519,9 @@ public partial class MainWindow : Window
         if (_mode == ZoomMode.Fit) _mode = ZoomMode.Free;   // 100% 下平移仍然是 100%，不要切走
         _viewTx += dx;
         _viewTy += dy;
-        _vm.ZoomText = Math.Abs(_viewScale - 1.0) < 0.005 ? "100%" : $"自由缩放 {_viewScale * 100:F0}%";
+        _vm.ZoomText = Math.Abs(ZoomPct() - 100.0) < 0.5 ? "100%" : $"自由缩放 {ZoomPct():F0}%";
         ApplyView();
-        _vm.StatusText = $"滚轮：上下平移 · Ctrl+滚轮：左右平移 · Alt+滚轮：缩放（{_viewScale * 100:F0}%）";
+        _vm.StatusText = $"滚轮：上下平移 · Ctrl+滚轮：左右平移 · Alt+滚轮：缩放（{ZoomPct():F0}%）";
     }
 
     private void OnImageMouseDown(object sender, MouseButtonEventArgs e)
@@ -804,6 +822,25 @@ public partial class MainWindow : Window
     public bool PlayheadVisibleForTest() => _playheadUIReady && PlayheadHost.Visibility == Visibility.Visible;
     /// <summary>验收：把指定图片滚到帧针下（与鼠标拖动滚动条等效）。</summary>
     public void CenterThumbForTest(ImageItem item) => SyncNeedleToItem(item);
+    [DllImport("user32.dll")] private static extern bool PostMessage(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
+    private const uint WM_IME_CONTROL = 0x0283;
+    private static readonly IntPtr IMC_SETCONVERSIONMODE = (IntPtr)0x0002;
+
+    /// <summary>
+    /// 启动时把本窗口输入法切到英文（字母/数字半角模式，IME_CMODE_ALPHANUMERIC）。
+    /// 已是英文时无副作用；仅影响本程序窗口，不改系统全局输入法。
+    /// </summary>
+    private void SetImeEnglish()
+    {
+        try
+        {
+            var hwnd = new System.Windows.Interop.WindowInteropHelper(this).Handle;
+            if (hwnd == IntPtr.Zero) return;
+            PostMessage(hwnd, WM_IME_CONTROL, IMC_SETCONVERSIONMODE, IntPtr.Zero);
+        }
+        catch { }
+    }
+
     /// <summary>验收：模拟按下指定按键（走真实按键路由；无输入源时直接调用处理器兜底）。</summary>
     public void PressKeyForTest(Key key)
     {
@@ -1088,7 +1125,8 @@ public partial class MainWindow : Window
     {
         if (_vm.LargeImage == null) return;
         ZoomAt(new Point(ImageArea.ActualWidth / 2, ImageArea.ActualHeight / 2), factor);
-        if (_viewScale >= 0.95) _ = EnsureFullResAsync(applyActual: false);
+        // 放大到超过预览像素后，后台换原图细节（无缝，缩放百分比按原图分辨率连续）
+        if (_viewScale >= 1.2) _ = EnsureFullResAsync(applyActual: false, onlyWhenZoomed: true);
     }
 
     /// <summary>切到 100%：后台全解原图后像素 1:1 显示，支持快速连按（第二次起直接就位）。</summary>
@@ -1164,6 +1202,9 @@ public partial class MainWindow : Window
         OnSortDirChanged();
         PlayheadModeToggle.IsChecked = Session.Settings.PlayheadMode;
         UpdateEmptyHint();
+        // 启动时把输入法切到英文（半角英文数字）；已是英文时无副作用
+        SetImeEnglish();
+        _ = Dispatcher.BeginInvoke(new Action(SetImeEnglish), DispatcherPriority.ApplicationIdle);
         Activate();
     }
 
