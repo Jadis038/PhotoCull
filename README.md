@@ -1,7 +1,7 @@
 ﻿# PhotoCull（影·筛）
 
 > Windows 图片快速筛选工具：一次打开几千张 RAW，单击查看、双击标记，选中的图自动复制进「筛选」文件夹。
-> 应用名「影·筛」（中间是 U+00B7 间隔号），PhotoCull 是本仓库/发行名。**macOS 版规划中**（见下方 Roadmap）。
+> 应用名「影·筛」（中间是 U+00B7 间隔号），PhotoCull 是本仓库/发行名。**Windows 与 macOS 双平台**：macOS 版源码与构建说明见 [macos/](macos/)。
 
 [![Release](https://img.shields.io/badge/release-v1.0.7-blue)](../../releases/latest)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
@@ -106,8 +106,9 @@ RAW 解码使用 [LibRaw](https://www.libraw.org/)（**LGPL-2.1 / CDDL-1.0** 双
 
 ## Roadmap
 
-- **macOS 版**：规划中，技术方案与移植清单见 [docs/MAC移植提示词.md](docs/MAC移植提示词.md)
-  （Avalonia + .NET 10，兼容 macOS 16/26/27，复用本仓库 Core 引擎）
+- **macOS 版**：已发布 1.0.2（Apple Silicon，macOS 12+）。原生 Swift + AppKit + ImageIO，
+  源码、构建脚本、测试与性能报告见 [macos/](macos/)，安装盘见
+  [macOS release](https://github.com/Jadis038/PhotoCull/releases/tag/macos-v1.0.2)。
 - 欢迎提 Issue / PR
 
 ## 从源码构建
