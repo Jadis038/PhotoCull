@@ -49,6 +49,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     private let undoButton = NSButton(title: "", target: nil, action: nil)
     private let counterLabel = NSTextField(labelWithString: "已筛 0 / 共 0")
     private let settingsButton = NSButton(title: "", target: nil, action: nil)
+    private let needleCheckbox = NSButton(checkboxWithTitle: "帧针模式", target: nil, action: nil)
+    private let shortcutsButton = NSButton(title: "", target: nil, action: nil)
+    private var shortcutsWindowController: ShortcutsWindowController?
 
     var canvasImageForTesting: CGImage? { canvas.image }
 
@@ -70,7 +73,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             defer: false
         )
         window.title = AppInfo.name
-        window.minSize = NSSize(width: 1000, height: 680)
+        window.minSize = NSSize(width: 1000, height: 800)
         window.isReleasedWhenClosed = false
         window.center()
         super.init(window: window)
@@ -150,11 +153,22 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         settingsButton.target = self
         settingsButton.action = #selector(settingsPressed)
 
+        needleCheckbox.state = AppSettings.shared.frameNeedleEnabled ? .on : .off
+        needleCheckbox.target = self
+        needleCheckbox.action = #selector(needleToggled)
+        needleCheckbox.toolTip = "帧针模式：滚动缩略图条，中心帧针对准的图片即当前图"
+
+        shortcutsButton.bezelStyle = .rounded
+        shortcutsButton.image = NSImage(systemSymbolName: "keyboard", accessibilityDescription: "快捷键")
+        shortcutsButton.toolTip = "快捷键说明"
+        shortcutsButton.target = self
+        shortcutsButton.action = #selector(shortcutsPressed)
+
         let spacer = NSView()
         spacer.translatesAutoresizingMaskIntoConstraints = false
         spacer.setContentHuggingPriority(.init(1), for: .horizontal)
 
-        let stack = NSStackView(views: [openButton, folderLabel, spacer, sortPopup, orderButton, modeControl, undoButton, counterLabel, settingsButton])
+        let stack = NSStackView(views: [openButton, folderLabel, spacer, sortPopup, orderButton, modeControl, needleCheckbox, undoButton, counterLabel, shortcutsButton, settingsButton])
         stack.translatesAutoresizingMaskIntoConstraints = false
         stack.orientation = .horizontal
         stack.alignment = .centerY
@@ -235,6 +249,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         strip.onToggleMark = { [weak self] item in
             self?.session.toggleMark(item)
         }
+        strip.onNeedleSelect = { [weak self] index in
+            self?.session.select(index: index)
+        }
+        strip.setNeedleEnabled(AppSettings.shared.frameNeedleEnabled)
         strip.onRequestThumbnail = { [weak self] item in
             self?.session.requestThumbnail(for: item)
         }
@@ -282,12 +300,17 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         session.onMetadataReady = { [weak self] item in
             guard let self, let displayed = self.displayedItem, displayed === item else { return }
             self.sidebar.update(item: item)
+            if let size = item.nativeDisplaySize {
+                self.canvas.updateNativeSize(size)
+            }
         }
 
         session.onPreviewReady = { [weak self] path, image in
             guard let self, let displayed = self.displayedItem, displayed.url.path == path else { return }
             if let image {
-                self.canvas.setImage(image, identity: path, resetZoom: true)
+                self.canvas.setImage(image, identity: path,
+                                     nativeSize: displayed.nativeDisplaySize ?? .zero,
+                                     resetZoom: true)
                 self.sidebar.setStatusText(nil)
             } else {
                 self.canvas.setPlaceholder("无法打开这个文件（\(displayed.ext.uppercased())）")
@@ -299,6 +322,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             guard let self, let displayed = self.displayedItem, displayed.url.path == path else { return }
             if let image {
                 self.canvas.setFullImage(image, identity: path)
+                if displayed.nativeDisplaySize == nil {
+                    self.canvas.updateNativeSize(CGSize(width: image.width, height: image.height))
+                }
                 self.sidebar.setStatusText("原图已加载")
             } else {
                 self.sidebar.setStatusText("原图解码失败，已保留预览")
@@ -307,6 +333,14 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
 
         session.onThumbnailReady = { [weak self] path, image in
             self?.strip.updateThumbnail(path: path, image: image)
+        }
+
+        session.onItemAuxChanged = { [weak self] item in
+            guard let self else { return }
+            self.strip.updateAuxState(for: item)
+            if let displayed = self.displayedItem, displayed === item {
+                self.sidebar.update(item: item)
+            }
         }
 
         session.onItemMarkChanged = { [weak self] item in
@@ -365,7 +399,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         displayedItem = item
         fullRequestedPath = nil
         sidebar.update(item: item)
-        canvas.setImage(nil, identity: item.url.path, resetZoom: true, placeholder: "正在加载 \(item.name)…")
+        canvas.setImage(nil, identity: item.url.path,
+                        nativeSize: item.nativeDisplaySize ?? .zero,
+                        resetZoom: true, placeholder: "正在加载 \(item.name)…")
         if let index = session.items.firstIndex(where: { $0 === item }) {
             strip.setSelected(index: index, scroll: true)
         }
@@ -513,33 +549,76 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         guard let window, window.isKeyWindow, window.attachedSheet == nil else { return event }
         if let responder = window.firstResponder, responder is NSTextView { return event }
         let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
-        if flags.contains(.command) || flags.contains(.control) || flags.contains(.option) {
+        let characters = event.charactersIgnoringModifiers?.lowercased() ?? ""
+
+        if flags.contains(.option) || flags.contains(.command) {
             return event
         }
+        if flags.contains(.control) {
+            if characters == "z" {
+                session.undo()
+                return nil
+            }
+            if characters == "o" {
+                openFolderPanel()
+                return nil
+            }
+            return event
+        }
+
         switch event.keyCode {
-        case 123:
+        case 123: // ←
             session.select(offset: -1)
             return nil
-        case 124:
+        case 124: // →
             session.select(offset: 1)
             return nil
-        case 36, 76:
+        case 126: // ↑
+            canvas.zoomInStep()
+            return nil
+        case 125: // ↓
+            canvas.zoomOutStep()
+            return nil
+        case 36, 76: // Enter / 小键盘 Enter
+            canvas.zoomToActual(anchor: nil)
+            return nil
+        case 115: // Home
+            if !session.items.isEmpty { session.select(index: 0) }
+            return nil
+        case 119: // End
+            if !session.items.isEmpty { session.select(index: session.items.count - 1) }
+            return nil
+        case 96: // F5
+            session.refresh()
+            return nil
+        case 103: // F11
+            window.toggleFullScreen(nil)
+            return nil
+        case 49: // 空格
             toggleCurrentMark()
             return nil
         default:
             break
         }
-        let characters = event.charactersIgnoringModifiers?.lowercased() ?? ""
+
         if characters == "x" {
             toggleCurrentMark()
             return nil
         }
-        if characters == "0" {
+        if characters == "s" {
+            if let item = session.currentItem { session.toggleLock(item) }
+            return nil
+        }
+        if characters == "z" {
             canvas.zoomToFit()
             return nil
         }
-        if characters == "1" {
-            canvas.zoomToActual()
+        if characters == "0" {
+            if let item = session.currentItem { session.setStars(item, 0) }
+            return nil
+        }
+        if let digit = Int(characters), (1...5).contains(digit) {
+            if let item = session.currentItem { session.setStars(item, digit) }
             return nil
         }
         if characters == "+" || characters == "=" {
@@ -551,6 +630,21 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             return nil
         }
         return event
+    }
+
+    @objc private func needleToggled() {
+        let enabled = needleCheckbox.state == .on
+        AppSettings.shared.frameNeedleEnabled = enabled
+        strip.setNeedleEnabled(enabled)
+    }
+
+    @objc func shortcutsPressed() {
+        if shortcutsWindowController == nil {
+            shortcutsWindowController = ShortcutsWindowController()
+        }
+        shortcutsWindowController?.showWindow(nil)
+        shortcutsWindowController?.window?.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
     }
 
     private func toggleCurrentMark() {

@@ -285,6 +285,26 @@ enum SelfTest {
             check("取消队列测试执行", false, error.localizedDescription)
         }
 
+        // 13. 保护锁定 / 星级持久化
+        do {
+            let folder = root.appendingPathComponent("锁定星级", isDirectory: true)
+            try fileManager.createDirectory(at: folder, withIntermediateDirectories: true)
+            let source = folder.appendingPathComponent("IMG_0900-\(tag).JPG")
+            try writeJPEG(source)
+            let items = try Scanner.scan(folder: folder).items
+            guard let item = items.first else { throw AppError("扫描失败") }
+            let store = try StateStore(folder: folder)
+            try store.setLock(path: item.url.path, locked: true)
+            check("保护状态写入/读取", store.loadLocks().contains(item.url.path))
+            try store.setStars(path: item.url.path, stars: 4)
+            check("星级写入/读取", store.loadStars()[item.url.path] == 4)
+            try store.setLock(path: item.url.path, locked: false)
+            try store.setStars(path: item.url.path, stars: 0)
+            check("保护/星级可清除", !store.loadLocks().contains(item.url.path) && store.loadStars()[item.url.path] == nil)
+        } catch {
+            check("锁定星级持久化测试执行", false, error.localizedDescription)
+        }
+
         return failures == 0 ? 0 : 1
     }
 

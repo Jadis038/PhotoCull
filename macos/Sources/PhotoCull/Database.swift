@@ -192,6 +192,19 @@ final class StateStore {
         try database.execute("""
             CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
         """)
+        try database.execute("""
+            CREATE TABLE IF NOT EXISTS locks (
+                path TEXT PRIMARY KEY,
+                locked_at REAL NOT NULL
+            );
+        """)
+        try database.execute("""
+            CREATE TABLE IF NOT EXISTS stars (
+                path TEXT PRIMARY KEY,
+                value INTEGER NOT NULL,
+                updated_at REAL NOT NULL
+            );
+        """)
         try database.execute("INSERT OR REPLACE INTO meta(key, value) VALUES (?, ?);",
                              params: ["folder", folder.path])
     }
@@ -246,6 +259,50 @@ final class StateStore {
 
     func remove(sourcePath: String) throws {
         try database.execute("DELETE FROM records WHERE path = ?;", params: [sourcePath])
+    }
+
+    func loadLocks() -> Set<String> {
+        var result = Set<String>()
+        do {
+            try database.query("SELECT path FROM locks;") { row in
+                if let path = row["path"]?.stringValue { result.insert(path) }
+            }
+        } catch {
+            Log.info("读取保护状态失败：\(error.localizedDescription)")
+        }
+        return result
+    }
+
+    func setLock(path: String, locked: Bool) throws {
+        if locked {
+            try database.execute("INSERT OR REPLACE INTO locks(path, locked_at) VALUES (?, ?);",
+                                 params: [path, Date().timeIntervalSince1970])
+        } else {
+            try database.execute("DELETE FROM locks WHERE path = ?;", params: [path])
+        }
+    }
+
+    func loadStars() -> [String: Int] {
+        var result: [String: Int] = [:]
+        do {
+            try database.query("SELECT path, value FROM stars;") { row in
+                guard let path = row["path"]?.stringValue,
+                      let value = row["value"]?.intValue else { return }
+                result[path] = Int(value)
+            }
+        } catch {
+            Log.info("读取星级失败：\(error.localizedDescription)")
+        }
+        return result
+    }
+
+    func setStars(path: String, stars: Int) throws {
+        if stars <= 0 {
+            try database.execute("DELETE FROM stars WHERE path = ?;", params: [path])
+        } else {
+            try database.execute("INSERT OR REPLACE INTO stars(path, value, updated_at) VALUES (?, ?, ?);",
+                                 params: [path, stars, Date().timeIntervalSince1970])
+        }
     }
 
     func clear() throws {

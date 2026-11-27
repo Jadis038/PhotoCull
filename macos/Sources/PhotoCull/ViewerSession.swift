@@ -45,6 +45,7 @@ final class ViewerSession {
     var onFullReady: ((String, CGImage?) -> Void)?
     var onThumbnailReady: ((String, CGImage?) -> Void)?
     var onItemMarkChanged: ((PhotoItem) -> Void)?
+    var onItemAuxChanged: ((PhotoItem) -> Void)?
     var onCountsChanged: ((Int, Int) -> Void)?
     var onThumbnailProgress: ((Int, Int) -> Void)?
     var onStatusText: ((String?) -> Void)?
@@ -186,6 +187,12 @@ final class ViewerSession {
                 }
 
                 var allItems = scan.items + recovered
+                let locks = store.loadLocks()
+                let stars = store.loadStars()
+                for item in allItems {
+                    item.isLocked = locks.contains(item.url.path)
+                    item.stars = stars[item.url.path] ?? 0
+                }
                 allItems = Scanner.sort(allItems, by: self.settings.sortKey, order: self.settings.sortOrder)
                 for (index, item) in allItems.enumerated() { item.displayIndex = index }
 
@@ -518,6 +525,10 @@ final class ViewerSession {
     // MARK: - 标记 / 取消 / 撤销
 
     func toggleMark(_ item: PhotoItem) {
+        guard !item.isLocked else {
+            onError?("该图已被保护锁定（按 S 解锁后再取消）")
+            return
+        }
         guard let engine = markEngine else { return }
         switch item.markState {
         case .none, .error:
@@ -542,8 +553,43 @@ final class ViewerSession {
         updateCounts()
     }
 
+    /// S：保护 / 解锁当前图，持久化到 SQLite
+    func toggleLock(_ item: PhotoItem) {
+        item.isLocked.toggle()
+        do {
+            try stateStore?.setLock(path: item.url.path, locked: item.isLocked)
+        } catch {
+            onError?("保存保护状态失败：\(error.localizedDescription)")
+        }
+        onItemAuxChanged?(item)
+    }
+
+    /// 数字键：1~5 星；同键再按或 0 清除
+    func setStars(_ item: PhotoItem, _ value: Int) {
+        let newValue: Int
+        if value <= 0 {
+            newValue = 0
+        } else if item.stars == value {
+            newValue = 0
+        } else {
+            newValue = min(5, max(1, value))
+        }
+        item.stars = newValue
+        do {
+            try stateStore?.setStars(path: item.url.path, stars: newValue)
+        } catch {
+            onError?("保存星级失败：\(error.localizedDescription)")
+        }
+        onItemAuxChanged?(item)
+    }
+
     func undo() {
-        guard let action = undoStack.popLast(), let engine = markEngine else { return }
+        guard let action = undoStack.last, let engine = markEngine else { return }
+        if let item = itemByPath[action.sourcePath], item.isLocked {
+            onError?("该图已被保护锁定（按 S 解锁后再取消）")
+            return
+        }
+        undoStack.removeLast()
         onUndoAvailabilityChanged?(!undoStack.isEmpty)
         onStatusText?("正在撤销…")
         engine.undo(action)

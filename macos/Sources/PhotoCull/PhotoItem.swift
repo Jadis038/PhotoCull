@@ -85,6 +85,10 @@ final class PhotoItem {
     /// 只读到拍摄时间时使用，避免抢占完整元数据
     var quickCaptureDate: Date?
     var markState: MarkState = .none
+    /// 保护锁定（S 切换），持久化在 locks 表
+    var isLocked: Bool = false
+    /// 0~5 星，持久化在 stars 表
+    var stars: Int = 0
     var markMode: OperationMode = .copy
     var record: MarkRecord?
     /// 索引中存在记录，但原文件已不存在
@@ -126,4 +130,12 @@ final class PhotoItem {
 
     /// 拍摄时间排序用的日期：优先 EXIF，其次文件修改时间
     var sortDate: Date { metadata?.captureDate ?? quickCaptureDate ?? mtime }
+
+    /// 应用 EXIF 旋转后的原图显示尺寸（宽高在 90/270° 方向时互换）
+    var nativeDisplaySize: CGSize? {
+        guard let meta = metadata, let width = meta.pixelWidth, let height = meta.pixelHeight,
+              width > 0, height > 0 else { return nil }
+        let swap = [5, 6, 7, 8].contains(Int(meta.orientation.rawValue))
+        return swap ? CGSize(width: height, height: width) : CGSize(width: width, height: height)
+    }
 }

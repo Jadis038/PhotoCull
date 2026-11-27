@@ -101,7 +101,7 @@ final class SettingsWindowController: NSWindowController {
         stack.addArrangedSubview(updateCheckbox)
 
         stack.addArrangedSubview(separator())
-        stack.addArrangedSubview(helpLabel("快捷键：←/→ 切换照片，X 或回车标记/取消，⌘Z 撤销，⌘O 打开文件夹，⌘0 适应窗口，⌘1 100% 原图。\n点击左上角红色按钮会直接退出应用。"))
+        stack.addArrangedSubview(helpLabel("快捷键：空格 / X 标记，Z 适应窗口，Enter 100%，↑/↓ 缩放，S 保护，1–5 星级，←/→ 切图。\n⌘Z 撤销，⌘O 打开文件夹，F11 全屏；点击左上角红色按钮直接退出。"))
 
         versionLabel.font = NSFont.systemFont(ofSize: 10)
         versionLabel.textColor = NSColor.tertiaryLabelColor

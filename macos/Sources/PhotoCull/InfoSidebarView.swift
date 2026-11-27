@@ -21,6 +21,8 @@ final class InfoSidebarView: NSVisualEffectView {
     private let fieldOrder: [(key: String, title: String, lines: Int)] = [
         ("name", "文件名", 2),
         ("state", "状态", 1),
+        ("lock", "保护", 1),
+        ("stars", "星级", 1),
         ("camera", "机型", 1),
         ("lens", "镜头", 2),
         ("focal", "焦距", 1),
@@ -127,7 +129,7 @@ final class InfoSidebarView: NSVisualEffectView {
 
     func update(item: PhotoItem?) {
         guard let item else {
-            for (_, label) in valueLabels { label.stringValue = "—" }
+            for (_, label) in valueLabels { label.stringValue = "—"; label.textColor = NSColor.labelColor }
             return
         }
         let meta = item.metadata
@@ -143,6 +145,20 @@ final class InfoSidebarView: NSVisualEffectView {
             setValue("state", "操作失败")
         case .none:
             setValue("state", "未筛选")
+        }
+        if item.isLocked {
+            setValue("lock", "🔒 已保护（S 解锁）")
+            valueLabels["lock"]?.textColor = NSColor.systemOrange
+        } else {
+            setValue("lock", "未保护")
+            valueLabels["lock"]?.textColor = NSColor.labelColor
+        }
+        if item.stars > 0 {
+            setValue("stars", String(repeating: "★", count: item.stars))
+            valueLabels["stars"]?.textColor = NSColor.systemYellow
+        } else {
+            setValue("stars", "—")
+            valueLabels["stars"]?.textColor = NSColor.labelColor
         }
         setValue("camera", MetadataFormat.camera(meta))
         setValue("lens", MetadataFormat.lens(meta))

@@ -8,7 +8,7 @@ enum AppInfo {
     /// 用户可见名称使用 U+00B7 中间点
     static let name = "影·筛"
     static let latinName = "PhotoCull"
-    static let version = "1.0.2"
+    static let version = "1.0.3"
     static let build = "1"
     static let bundleIdentifier = "com.jadis038.photocull"
     static let copyright = "© 2026 Галин 与影·筛贡献者"

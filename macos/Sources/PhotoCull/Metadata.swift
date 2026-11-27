@@ -53,9 +53,11 @@ enum MetadataReader {
             // 有的 RAW 只给传感器尺寸，这里保留原始值
         }
 
-        meta.colorSpaceName = string(properties[kCGImagePropertyProfileName])
-        if meta.colorSpaceName == nil, let model = number(properties[kCGImagePropertyColorModel]) {
-            meta.colorSpaceName = colorModelName(Int(model))
+        if MediaKind.from(extension: url.pathExtension.lowercased()).isRaw {
+            // RAW 只有明确的 40961 / DNG AsShotProfileName 才显示；系统给的 ProfileName 可能是推算值，不采信
+            meta.colorSpaceName = ColorSpaceReader.rawColorSpace(url: url)
+        } else {
+            meta.colorSpaceName = string(properties[kCGImagePropertyProfileName])
         }
         meta.formatName = formatLabel(for: url.pathExtension.lowercased(), typeIdentifier: CGImageSourceGetType(source) as String?)
 

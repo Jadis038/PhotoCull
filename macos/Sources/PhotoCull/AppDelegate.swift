@@ -9,6 +9,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var updateWindowController: UpdateWindowController?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        InputSourceHelper.selectEnglishInputSource()
         NSApp.mainMenu = makeMainMenu()
 
         let controller = MainWindowController()
@@ -268,24 +269,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func helpAction() {
-        let alert = NSAlert()
-        alert.messageText = "快捷键"
-        alert.informativeText = """
-        ← / →        上一张 / 下一张
-        X 或 回车     标记 / 取消当前照片
-        双击缩略图    标记 / 取消
-        ⌘Z           撤销上一步
-        ⌘O           打开文件夹
-        ⌘R           刷新文件夹
-        ⌘0           适应窗口
-        ⌘1           100% 原图
-        滚轮 / 双指    缩放
-        拖拽大图       平移（100% 时）
-        双击大图       适应窗口
-
-        点击窗口左上角红色按钮会直接退出应用（无需 ⌘Q）。
-        """
-        alert.addButton(withTitle: "好")
-        alert.runModal()
+        mainController?.shortcutsPressed()
     }
 }

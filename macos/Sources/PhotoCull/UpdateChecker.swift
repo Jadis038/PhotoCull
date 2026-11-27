@@ -58,8 +58,7 @@ final class UpdateChecker {
     // MARK: - 检查
 
     /// 只接受带 macOS DMG 的 GitHub Release。Windows 的 MSI release 会被忽略。
-    /// macOS 的 release 以 prerelease 形式发布，避免影响 Windows 端的 /releases/latest；
-    /// 因此这里默认包含 prerelease。
+    /// macOS 的 Release 为正式版；Atom 源同时覆盖正式版和临时预发布，便于测试。
     func checkForUpdate(includePrerelease: Bool = true,
                         completion: @escaping (Result<UpdateRelease?, Error>) -> Void) {
         _ = includePrerelease
@@ -119,7 +118,7 @@ final class UpdateChecker {
                 assetName: assetName,
                 downloadURL: downloadURL,
                 publishedAt: published,
-                prerelease: true
+                prerelease: false
             )
             if best == nil || Self.compare(release.version, best!.version) == .orderedDescending {
                 best = release

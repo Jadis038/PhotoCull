@@ -1,0 +1,43 @@
+Gain Map will be ignored because of mismatch in green channels
+Gain Map will be ignored because of mismatch in green channels
+UI 自动化验收开始
+PASS | 打开文件夹并加载列表 | 共 52 张
+PASS | 打开 JPG | 尼康Z8 JPG有位置信息.JPG
+PASS | 打开 尼康 NEF | 尼康Z8 RAW有位置信息.NEF
+PASS | 尼康 NEF 元数据 | NIKON Z 8
+PASS | 打开 佳能 CR2 | 佳能5D3 RAW.CR2
+PASS | 佳能 CR2 元数据 | Canon EOS 5D Mark III
+PASS | 打开 佳能 CR3 | 佳能R8 RAW.CR3
+PASS | 佳能 CR3 元数据 | Canon EOS R8
+PASS | 打开 索尼 ARW | 索尼A6700 RAW.ARW
+PASS | 索尼 ARW 元数据 | ILCE-6700
+PASS | 打开 富士 RAF | Fujifilm X-T10.RAF
+PASS | 富士 RAF 元数据 | X-T10
+PASS | 打开 奥林巴斯 ORF | Olympus OM-D E-M10 Mark II.ORF
+PASS | 奥林巴斯 ORF 元数据 | E-M10MarkII     
+PASS | 打开 松下 RW2 | Panasonic Lumix DMC-GH4.RW2
+PASS | 松下 RW2 元数据 | DMC-GH4
+PASS | 打开 DNG | 大疆AIE3 RAW有位置信息.DNG
+PASS | DNG 元数据 | FC8282
+PASS | 打开 PNG | 尼康Z8 PNG.png
+PASS | 打开 TIFF | 尼康Z8 TIFF.tif
+PASS | 打开 AVIF | 尼康Z8 AVIF.avif
+PASS | 打开 JPEG XL | 尼康Z8 JPG XL.jxl
+PASS | 打开 OpenEXR | 尼康Z8 OpenEXR.exr
+PASS | 打开 HEIC | 三星HEIC有位置信息.heic
+PASS | 界面标记完成
+PASS | 标记后副本存在
+PASS | 计数更新
+PASS | 界面取消完成
+PASS | 取消后副本消失
+PASS | 取消后原文件仍在
+PASS | 界面撤销标记
+PASS | 移动模式：原文件移走
+PASS | 移动模式：副本出现
+PASS | 移动模式取消：原文件移回
+PASS | 按大小降序排序
+PASS | 设置窗口可打开
+PASS | 测试后源文件完整 | 初始 52 / 结束 52
+PASS | 测试后筛选目录无残留 | []
+
+UI 验收结束：38 通过 / 0 失败

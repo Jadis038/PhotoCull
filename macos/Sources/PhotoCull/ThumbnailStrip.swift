@@ -4,9 +4,21 @@ import ImageIO
 
 /// 竖向滚轮映射为横向滚动，方便鼠标用户浏览缩略图条
 final class HorizontalWheelScrollView: NSScrollView {
+    var onUserScroll: (() -> Void)?
+    var stepModeEnabled = false
+    var onStepScroll: ((Int) -> Void)?
+
     override func scrollWheel(with event: NSEvent) {
+        onUserScroll?()
         let dx = event.scrollingDeltaX
         let dy = event.scrollingDeltaY
+        // 帧针模式下的普通鼠标滚轮：一格 = 相邻一张，不做像素滚动
+        if stepModeEnabled, !event.hasPreciseScrollingDeltas {
+            let delta = abs(dy) > 0.001 ? dy : dx
+            guard abs(delta) > 0.001 else { return }
+            onStepScroll?(delta < 0 ? 1 : -1)
+            return
+        }
         if abs(dx) > abs(dy) {
             super.scrollWheel(with: event)
             return
@@ -33,7 +45,12 @@ final class ThumbnailStripView: NSView {
 
     private var items: [PhotoItem] = []
     private var selectedIndex: Int = -1
+    private let needleView = NeedleView()
+    private(set) var needleEnabled = false
+    private var suppressNeedleUntil = Date.distantPast
+    private var needleDrivenSelection = false
 
+    var onNeedleSelect: ((Int) -> Void)?
     var onSelect: ((Int) -> Void)?
     var onToggleMark: ((PhotoItem) -> Void)?
     var onRequestThumbnail: ((PhotoItem) -> Void)?
@@ -48,6 +65,10 @@ final class ThumbnailStripView: NSView {
     required init?(coder: NSCoder) {
         super.init(coder: coder)
         setup()
+    }
+
+    deinit {
+        NotificationCenter.default.removeObserver(self)
     }
 
     private func setup() {
@@ -75,6 +96,27 @@ final class ThumbnailStripView: NSView {
         collectionView.register(ThumbnailCollectionItem.self, forItemWithIdentifier: Self.cellIdentifier)
 
         scrollView.documentView = collectionView
+        scrollView.contentView.postsBoundsChangedNotifications = true
+        NotificationCenter.default.addObserver(self, selector: #selector(scrollBoundsChanged),
+                                               name: NSView.boundsDidChangeNotification,
+                                               object: scrollView.contentView)
+        scrollView.onUserScroll = { [weak self] in
+            guard let self else { return }
+            self.suppressNeedleUntil = .distantPast
+        }
+        scrollView.onStepScroll = { [weak self] direction in
+            self?.stepBy(direction)
+        }
+
+        needleView.translatesAutoresizingMaskIntoConstraints = false
+        needleView.isHidden = true
+        addSubview(needleView)
+        NSLayoutConstraint.activate([
+            needleView.leadingAnchor.constraint(equalTo: leadingAnchor),
+            needleView.trailingAnchor.constraint(equalTo: trailingAnchor),
+            needleView.topAnchor.constraint(equalTo: topAnchor),
+            needleView.bottomAnchor.constraint(equalTo: bottomAnchor)
+        ])
         NSLayoutConstraint.activate([
             scrollView.leadingAnchor.constraint(equalTo: leadingAnchor),
             scrollView.trailingAnchor.constraint(equalTo: trailingAnchor),
@@ -97,30 +139,154 @@ final class ThumbnailStripView: NSView {
         self.items = items
         selectedIndex = -1
         emptyLabel.isHidden = !items.isEmpty
+        updateLayoutInsets()
         updateCollectionFrame()
         collectionView.reloadData()
         scrollView.contentView.scroll(to: NSPoint(x: 0, y: 0))
         scrollView.reflectScrolledClipView(scrollView.contentView)
+        needleView.isHidden = !needleEnabled || items.isEmpty
+        if needleEnabled {
+            setNeedleCenter()
+        }
+    }
+
+    private var viewportWidth: CGFloat {
+        let value = scrollView.contentView.bounds.width
+        return max(1, value > 1 ? value : bounds.width)
+    }
+
+    /// 帧针模式下左右留出半屏空白，保证第一张和最后一张也能滚到正中央
+    private var sideInset: CGFloat {
+        guard needleEnabled else { return 10 }
+        return max(10, (viewportWidth - 176) / 2)
+    }
+
+    private func updateLayoutInsets() {
+        let inset = NSEdgeInsets(top: 8, left: sideInset, bottom: 8, right: sideInset)
+        if abs(flowLayout.sectionInset.left - inset.left) > 0.5 {
+            flowLayout.sectionInset = inset
+            flowLayout.invalidateLayout()
+        }
     }
 
     private func updateCollectionFrame() {
         let height = max(bounds.height, 174)
-        let width = max(bounds.width, 10 + CGFloat(items.count) * 176 + CGFloat(max(0, items.count - 1)) * 8 + 10)
+        let side = sideInset
+        let content = side * 2 + CGFloat(items.count) * 176 + CGFloat(max(0, items.count - 1)) * 8
+        let width = max(viewportWidth, content)
         collectionView.frame = NSRect(x: 0, y: 0, width: width, height: height)
     }
 
     override func layout() {
         super.layout()
+        updateLayoutInsets()
         updateCollectionFrame()
+        collectionView.layoutSubtreeIfNeeded()
+        if needleEnabled {
+            if selectedIndex >= 0 {
+                syncNeedleToItem(selectedIndex)
+            } else {
+                setNeedleCenter()
+            }
+        }
     }
 
     func setSelected(index: Int, scroll: Bool) {
         guard index >= 0, index < items.count else { return }
+        let fromNeedle = needleDrivenSelection
+        needleDrivenSelection = false
         selectedIndex = index
         refreshSelectionForVisibleCells()
-        if scroll {
-            revealIndexIfNeeded(index)
+        guard needleEnabled else {
+            if scroll { revealIndexIfNeeded(index) }
+            return
         }
+        if fromNeedle {
+            // 帧针驱动的选择：滚动位置和针的位置都已经就位，绝不能再滚一次
+            return
+        }
+        if scroll {
+            syncNeedleToItem(index)
+        }
+    }
+
+    // MARK: - 帧针模式
+
+    func setNeedleEnabled(_ enabled: Bool) {
+        needleEnabled = enabled
+        scrollView.stepModeEnabled = enabled
+        needleView.isHidden = !enabled || items.isEmpty
+        updateLayoutInsets()
+        updateCollectionFrame()
+        collectionView.layoutSubtreeIfNeeded()
+        if enabled {
+            if selectedIndex >= 0, selectedIndex < items.count {
+                syncNeedleToItem(selectedIndex)
+            } else {
+                setNeedleCenter()
+            }
+        } else if selectedIndex >= 0 {
+            revealIndexIfNeeded(selectedIndex)
+        }
+    }
+
+    private var itemStride: CGFloat { 184 }
+    private var itemCenterOffset: CGFloat { 88 }
+
+    private func itemCenterX(_ index: Int) -> CGFloat {
+        sideInset + CGFloat(index) * itemStride + itemCenterOffset
+    }
+
+    private func indexForCenter(_ center: CGFloat) -> Int {
+        guard !items.isEmpty else { return 0 }
+        let raw = (center - sideInset - itemCenterOffset) / itemStride
+        return min(items.count - 1, max(0, Int(raw.rounded())))
+    }
+
+    private func setNeedleCenter() {
+        needleView.needleX = bounds.midX
+    }
+
+    /// 程序化选图：把该项带到帧针下；能居中就居中，否则贴图并暂停判定
+    private func syncNeedleToItem(_ index: Int) {
+        guard needleEnabled, index >= 0, index < items.count else { return }
+        collectionView.layoutSubtreeIfNeeded()
+        let viewport = scrollView.contentView.bounds.width
+        let maxOffset = max(0, collectionView.frame.width - viewport)
+        let desired = itemCenterX(index) - viewport / 2
+        let offset = min(maxOffset, max(0, desired))
+        suppressNeedleUntil = Date().addingTimeInterval(0.22)
+        scrollView.contentView.scroll(to: NSPoint(x: offset, y: 0))
+        scrollView.reflectScrolledClipView(scrollView.contentView)
+        setNeedleCenter()
+        refreshSelectionForVisibleCells()
+    }
+
+    @objc private func scrollBoundsChanged() {
+        guard needleEnabled, !items.isEmpty else { return }
+        if Date() < suppressNeedleUntil { return }
+        let visible = scrollView.contentView.bounds
+        let center = visible.midX
+        let candidate = indexForCenter(center)
+        setNeedleCenter()
+        guard candidate != selectedIndex else { return }
+        needleDrivenSelection = true
+        onNeedleSelect?(candidate)
+    }
+
+    /// 普通鼠标滚轮：一格切相邻一张，帧针保持在正中
+    private func stepBy(_ direction: Int) {
+        guard needleEnabled, !items.isEmpty, direction != 0 else { return }
+        let current = selectedIndex >= 0 ? selectedIndex : 0
+        let target = min(items.count - 1, max(0, current + direction))
+        guard target != selectedIndex else {
+            setNeedleCenter()
+            return
+        }
+        selectedIndex = target
+        syncNeedleToItem(target)
+        needleDrivenSelection = true
+        onNeedleSelect?(target)
     }
 
     /// 仅当选中项不在可视范围内时，最小幅度滚动把它露出来；
@@ -178,6 +344,13 @@ final class ThumbnailStripView: NSView {
         guard let index = items.firstIndex(where: { $0.url.path == item.url.path }) else { return }
         if let cell = collectionView.item(at: IndexPath(item: index, section: 0)) as? ThumbnailCollectionItem {
             cell.cellView.updateMarkState()
+        }
+    }
+
+    func updateAuxState(for item: PhotoItem) {
+        guard let index = items.firstIndex(where: { $0.url.path == item.url.path }) else { return }
+        if let cell = collectionView.item(at: IndexPath(item: index, section: 0)) as? ThumbnailCollectionItem {
+            cell.cellView.updateAuxBadges()
         }
     }
 
@@ -254,6 +427,8 @@ final class ThumbnailItemView: NSView {
     private let imageView = NSImageView()
     private let nameLabel = NSTextField(labelWithString: "")
     private let checkBadge = NSImageView()
+    private let lockBadge = NSTextField(labelWithString: "🔒")
+    private let starBadge = NSTextField(labelWithString: "")
     private let spinner = NSProgressIndicator()
     private let overlay = NSView()
     private let unsupportedLabel = NSTextField(labelWithString: "无法预览")
@@ -317,6 +492,30 @@ final class ThumbnailItemView: NSView {
         checkBadge.layer?.shadowOffset = CGSize(width: 0, height: -1)
         addSubview(checkBadge)
 
+        lockBadge.font = NSFont.systemFont(ofSize: 11)
+        lockBadge.alignment = .center
+        lockBadge.isHidden = true
+        lockBadge.drawsBackground = true
+        lockBadge.backgroundColor = NSColor.black.withAlphaComponent(0.55)
+        lockBadge.isBordered = false
+        lockBadge.wantsLayer = true
+        lockBadge.layer?.cornerRadius = 4
+        lockBadge.layer?.shadowColor = NSColor.black.cgColor
+        lockBadge.layer?.shadowOpacity = 0.6
+        lockBadge.layer?.shadowRadius = 2
+        addSubview(lockBadge)
+
+        starBadge.font = NSFont.boldSystemFont(ofSize: 10)
+        starBadge.textColor = NSColor.systemYellow
+        starBadge.alignment = .center
+        starBadge.drawsBackground = true
+        starBadge.backgroundColor = NSColor.black.withAlphaComponent(0.55)
+        starBadge.isBordered = false
+        starBadge.wantsLayer = true
+        starBadge.layer?.cornerRadius = 4
+        starBadge.isHidden = true
+        addSubview(starBadge)
+
         spinner.style = .spinning
         spinner.controlSize = .small
         spinner.isDisplayedWhenStopped = false
@@ -343,6 +542,8 @@ final class ThumbnailItemView: NSView {
         checkBadge.frame = CGRect(x: imageRect.maxX - badgeSize - 4,
                                   y: imageRect.maxY - badgeSize - 4,
                                   width: badgeSize, height: badgeSize)
+        lockBadge.frame = CGRect(x: imageRect.minX + 4, y: imageRect.maxY - 20, width: 20, height: 16)
+        starBadge.frame = CGRect(x: imageRect.minX + 4, y: imageRect.maxY - 39, width: 32, height: 16)
         spinner.frame = CGRect(x: imageRect.midX - 12, y: imageRect.midY - 12, width: 24, height: 24)
         unsupportedLabel.frame = CGRect(x: imageRect.minX, y: imageRect.midY - 8,
                                         width: imageRect.width, height: 18)
@@ -364,6 +565,7 @@ final class ThumbnailItemView: NSView {
         displayedMarkState = item.markState
         setImage(image, force: true)
         updateMarkState()
+        updateAuxBadges()
         updateBorder()
         needsLayout = true
     }
@@ -419,7 +621,19 @@ final class ThumbnailItemView: NSView {
     func refresh() {
         setImage(baseImage)
         updateMarkState()
+        updateAuxBadges()
         updateBorder()
+    }
+
+    func updateAuxBadges() {
+        guard let item else { return }
+        lockBadge.isHidden = !item.isLocked
+        if item.stars > 0 {
+            starBadge.stringValue = "★\(item.stars)"
+            starBadge.isHidden = false
+        } else {
+            starBadge.isHidden = true
+        }
     }
 
     override func hitTest(_ point: NSPoint) -> NSView? {
@@ -447,5 +661,33 @@ final class ThumbnailItemView: NSView {
 
     override func menu(for event: NSEvent) -> NSMenu? {
         return menuProvider?()
+    }
+}
+
+
+/// 帧针：2px 竖线 + 顶部三角，固定覆盖在缩略图条上
+final class NeedleView: NSView {
+    var needleX: CGFloat = 0 { didSet { needsDisplay = true } }
+
+    override var isFlipped: Bool { true }
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+    override func draw(_ dirtyRect: NSRect) {
+        let color = NSColor(srgbRed: 1.0, green: 0.7608, blue: 0.2941, alpha: 1.0)
+        color.setStroke()
+        color.setFill()
+        let x = max(1, min(bounds.width - 1, needleX))
+        let line = NSBezierPath()
+        line.lineWidth = 2
+        line.move(to: NSPoint(x: x, y: 8))
+        line.line(to: NSPoint(x: x, y: bounds.height))
+        line.stroke()
+
+        let triangle = NSBezierPath()
+        triangle.move(to: NSPoint(x: x - 7, y: 0))
+        triangle.line(to: NSPoint(x: x + 7, y: 0))
+        triangle.line(to: NSPoint(x: x, y: 9))
+        triangle.close()
+        triangle.fill()
     }
 }

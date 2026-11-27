@@ -1,0 +1,40 @@
+PASS | 自然排序 IMG_2 < IMG_10
+PASS | 自然排序 中文数字
+PASS | 自然排序 两个数字位
+PASS | 扫描只列第一层图片 | 实际 3：["IMG_0001-YS85D81E.JPG", "IMG_0002-YS85D81E.NEF", "IMG_0010-YS85D81E.jpg"]
+PASS | 扫描排除隐藏/临时/子目录/筛选
+PASS | 扫描自然排序 | IMG_0001-YS85D81E.JPG, IMG_0002-YS85D81E.NEF, IMG_0010-YS85D81E.jpg
+PASS | 复制标记成功
+PASS | 筛选目录自动创建
+PASS | 副本存在且大小一致
+PASS | 无 .part 残留
+PASS | 索引记录写入
+PASS | 取消标记：副本离开筛选
+PASS | 取消标记：原文件不动
+PASS | 取消标记：索引删除
+PASS | 撤销取消：副本从回收站恢复
+PASS | 同名冲突自动改名 (1)
+PASS | 原同名副本未被覆盖
+PASS | 伴生文件：RAW 主文件
+PASS | 伴生文件：同名 JPG
+PASS | 伴生文件：XMP
+PASS | 移动模式：源文件移走
+PASS | 移动模式：副本出现
+PASS | 移动模式：记录 mode=move
+PASS | 移动模式取消：文件移回原位
+PASS | 移动模式取消：筛选副本消失
+PASS | 撤销标记：副本被移除
+PASS | 撤销标记：原文件仍在
+PASS | 撤销标记：索引清除
+PASS | 索引丢失后可按文件名重建 | 重建 1 条
+PASS | 重建记录指向筛选副本
+PASS | 中文/空格/长文件名复制成功
+PASS | 连点 10 张全部完成 | marked=10
+PASS | 连点 10 张副本数量正确 | copies=10
+PASS | 连点后无 .part 残留
+PASS | 取消队列后无 .part
+PASS | 保护状态写入/读取
+PASS | 星级写入/读取
+PASS | 保护/星级可清除
+
+自检结束：38 通过 / 0 失败

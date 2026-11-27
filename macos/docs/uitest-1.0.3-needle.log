@@ -1,0 +1,34 @@
+UI 自动化验收开始
+PASS | 打开文件夹并加载列表 | 共 7 张
+PASS | 打开 JPG | sample.JPG
+PASS | 打开 尼康 NEF | LIN_6092.NEF
+PASS | 尼康 NEF 元数据 | NIKON Z 8
+SKIP | 佳能 CR2（样本中没有）
+SKIP | 佳能 CR3（样本中没有）
+SKIP | 索尼 ARW（样本中没有）
+SKIP | 富士 RAF（样本中没有）
+SKIP | 奥林巴斯 ORF（样本中没有）
+SKIP | 松下 RW2（样本中没有）
+SKIP | DNG（样本中没有）
+SKIP | PNG（样本中没有）
+SKIP | TIFF（样本中没有）
+SKIP | AVIF（样本中没有）
+SKIP | JPEG XL（样本中没有）
+SKIP | OpenEXR（样本中没有）
+SKIP | HEIC（样本中没有）
+PASS | 界面标记完成
+PASS | 标记后副本存在
+PASS | 计数更新
+PASS | 界面取消完成
+PASS | 取消后副本消失
+PASS | 取消后原文件仍在
+PASS | 界面撤销标记
+PASS | 移动模式：原文件移走
+PASS | 移动模式：副本出现
+PASS | 移动模式取消：原文件移回
+PASS | 按大小降序排序
+PASS | 设置窗口可打开
+PASS | 测试后源文件完整 | 初始 7 / 结束 7
+PASS | 测试后筛选目录无残留 | []
+
+UI 验收结束：18 通过 / 0 失败

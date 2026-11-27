@@ -15,10 +15,16 @@ final class AppSettings {
             Keys.rememberLastFolder: true,
             Keys.restoreLastSession: false,
             Keys.checkForUpdates: true,
+            Keys.frameNeedleEnabled: true,
             Keys.decodeConcurrency: 0,
             Keys.cacheLimitGB: 5.0,
             Keys.lastFolderPath: ""
         ])
+        // 1.0.3：帧针模式首次出现时默认开启；旧配置没有版本号，视为旧版。
+        if defaults.integer(forKey: Keys.settingsVersion) < 2 {
+            defaults.set(true, forKey: Keys.frameNeedleEnabled)
+            defaults.set(2, forKey: Keys.settingsVersion)
+        }
     }
 
     private enum Keys {
@@ -28,6 +34,8 @@ final class AppSettings {
         static let rememberLastFolder = "rememberLastFolder"
         static let restoreLastSession = "restoreLastSession"
         static let checkForUpdates = "checkForUpdates"
+        static let frameNeedleEnabled = "frameNeedleEnabled"
+        static let settingsVersion = "settingsVersion"
         static let decodeConcurrency = "decodeConcurrency"
         static let cacheLimitGB = "cacheLimitGB"
         static let lastFolderPath = "lastFolderPath"
@@ -56,6 +64,11 @@ final class AppSettings {
     var restoreLastSession: Bool {
         get { defaults.bool(forKey: Keys.restoreLastSession) }
         set { defaults.set(newValue, forKey: Keys.restoreLastSession) }
+    }
+
+    var frameNeedleEnabled: Bool {
+        get { defaults.bool(forKey: Keys.frameNeedleEnabled) }
+        set { defaults.set(newValue, forKey: Keys.frameNeedleEnabled) }
     }
 
     var checkForUpdates: Bool {

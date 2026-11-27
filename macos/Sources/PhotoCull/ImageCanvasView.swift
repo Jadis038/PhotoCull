@@ -1,4 +1,5 @@
 // 影·筛 / PhotoCull — 大图查看区：适应窗口 / 100% / 自由缩放 / 拖拽平移
+// 缩放百分比统一以原图全分辨率为基准；预览图 → 原图切换时显示尺寸不变。
 import AppKit
 import ImageIO
 
@@ -11,22 +12,25 @@ final class ImageCanvasView: NSView {
 
     var onZoomChanged: ((CGFloat) -> Void)?
     var onZoomReachedFull: (() -> Void)?
+    var contextMenuProvider: (() -> NSMenu?)?
 
     private(set) var image: CGImage?
     private(set) var imageIdentity: String = ""
+    private var nativeSize: CGSize = .zero
     private var zoomMode: ZoomMode = .fit
-    private var manualScale: CGFloat = 1
+    /// 以原图像素为基准的缩放：1.0 = 100%（1 原图像素 = 1 point）
+    private var zoom: CGFloat = 1
     private var pan: CGPoint = .zero
     private var placeholderText: String?
-    private var doubleClickAction: (() -> Void)?
     private var fullRequested = false
-
-    var contextMenuProvider: (() -> NSMenu?)?
 
     private var mouseDownPoint: NSPoint?
     private var lastDragPoint: NSPoint?
     private var isPanning = false
     private var trackingArea: NSTrackingArea?
+
+    private let minZoom: CGFloat = 0.02
+    private let maxZoom: CGFloat = 12.0
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -69,10 +73,16 @@ final class ImageCanvasView: NSView {
 
     // MARK: - 外部接口
 
-    /// 新选中的图片。resetZoom 为真时回到适应窗口。
-    func setImage(_ image: CGImage?, identity: String, resetZoom: Bool = true, placeholder: String? = nil) {
+    /// 新选中的图片。nativeSize 是去掉 EXIF 旋转后的原图尺寸。
+    func setImage(_ image: CGImage?, identity: String, nativeSize: CGSize = .zero,
+                  resetZoom: Bool = true, placeholder: String? = nil) {
         self.image = image
         self.imageIdentity = identity
+        if nativeSize.width > 1, nativeSize.height > 1 {
+            self.nativeSize = nativeSize
+        } else if let image {
+            self.nativeSize = CGSize(width: image.width, height: image.height)
+        }
         self.placeholderText = placeholder ?? (image == nil ? "正在加载…" : nil)
         fullRequested = false
         if resetZoom {
@@ -83,13 +93,25 @@ final class ImageCanvasView: NSView {
         notifyZoom()
     }
 
-    /// 100% 原图解码完成，替换显示但保持当前缩放/位置
+    /// 100% 原图解码完成。显示尺寸由 nativeSize*zoom 决定，因此不会跳变。
     func setFullImage(_ image: CGImage, identity: String) {
         guard identity == imageIdentity else { return }
         self.image = image
         placeholderText = nil
         fullRequested = true
         needsDisplay = true
+    }
+
+    func updateNativeSize(_ size: CGSize) {
+        guard size.width > 1, size.height > 1, size != nativeSize else { return }
+        nativeSize = size
+        if zoomMode == .fit {
+            pan = .zero
+        } else {
+            pan = clampedPan(pan, zoom: currentZoom)
+        }
+        needsDisplay = true
+        notifyZoom()
     }
 
     func setPlaceholder(_ text: String?) {
@@ -100,10 +122,36 @@ final class ImageCanvasView: NSView {
     func clear() {
         image = nil
         imageIdentity = ""
+        nativeSize = .zero
         placeholderText = "拖入文件夹，或点击左上角「打开文件夹」"
         zoomMode = .fit
         pan = .zero
         needsDisplay = true
+    }
+
+    var zoomPercentage: Int {
+        Int((currentZoom * 100).rounded())
+    }
+
+    private var currentZoom: CGFloat {
+        switch zoomMode {
+        case .fit: return fitZoom()
+        case .actual: return 1.0
+        case .manual: return max(minZoom, min(zoom, maxZoom))
+        }
+    }
+
+    private func fitZoom() -> CGFloat {
+        guard nativeSize.width > 1, nativeSize.height > 1 else { return 1 }
+        let padding: CGFloat = 24
+        let availableWidth = max(40, bounds.width - padding * 2)
+        let availableHeight = max(40, bounds.height - padding * 2)
+        let value = min(availableWidth / nativeSize.width, availableHeight / nativeSize.height)
+        return min(max(value, minZoom), 1.0)
+    }
+
+    private func displaySize(for zoom: CGFloat) -> CGSize {
+        CGSize(width: nativeSize.width * zoom, height: nativeSize.height * zoom)
     }
 
     // MARK: - 缩放控制
@@ -115,102 +163,103 @@ final class ImageCanvasView: NSView {
         notifyZoom()
     }
 
-    func zoomToActual() {
-        zoomMode = .actual
-        pan = .zero
-        needsDisplay = true
-        notifyZoom()
-        if !fullRequested {
-            onZoomReachedFull?()
-        }
+    /// Enter / 双击：放大到 100% 原图。anchor 为 nil 时以画面中心为锚点。
+    func zoomToActual(anchor: NSPoint? = nil) {
+        guard image != nil, nativeSize.width > 0 else { return }
+        let point = anchor ?? NSPoint(x: bounds.midX, y: bounds.midY)
+        applyZoom(1.0, anchor: point, mode: .actual)
+        maybeRequestFull()
     }
 
     func zoomIn() {
-        zoom(to: displayScale * 1.25, anchor: NSPoint(x: bounds.midX, y: bounds.midY))
+        applyZoom(currentZoom * 1.25, anchor: NSPoint(x: bounds.midX, y: bounds.midY), mode: .manual)
     }
 
     func zoomOut() {
-        zoom(to: displayScale / 1.25, anchor: NSPoint(x: bounds.midX, y: bounds.midY))
+        applyZoom(currentZoom / 1.25, anchor: NSPoint(x: bounds.midX, y: bounds.midY), mode: .manual)
     }
 
-    var zoomPercentage: Int {
-        Int((displayScale * 100).rounded())
+    /// ↑：以画面中心为固定锚点放大 10%
+    func zoomInStep() {
+        applyZoom(currentZoom * 1.10, anchor: NSPoint(x: bounds.midX, y: bounds.midY), mode: .manual)
     }
 
-    private var displayScale: CGFloat {
-        guard image != nil else { return 1 }
-        switch zoomMode {
-        case .fit: return fitScale()
-        case .actual: return 1.0
-        case .manual: return max(0.02, min(manualScale, 8.0))
+    /// ↓：以画面中心为固定锚点缩小 10%
+    func zoomOutStep() {
+        applyZoom(currentZoom / 1.10, anchor: NSPoint(x: bounds.midX, y: bounds.midY), mode: .manual)
+    }
+
+    /// 双击大图 / 触控板双指双击：100% 与适应窗口切换
+    private func toggleZoomMode(anchor: NSPoint?) {
+        guard image != nil else { return }
+        let atActual = abs(currentZoom - 1.0) < 0.01
+        if atActual {
+            zoomToFit()
+        } else {
+            zoomToActual(anchor: anchor)
         }
     }
 
-    private func fitScale() -> CGFloat {
-        guard let image else { return 1 }
-        let padding: CGFloat = 24
-        let availableWidth = max(40, bounds.width - padding * 2)
-        let availableHeight = max(40, bounds.height - padding * 2)
-        let scale = min(availableWidth / CGFloat(image.width), availableHeight / CGFloat(image.height))
-        // 小图不做放大，保持 100% 以内
-        return min(max(scale, 0.01), 1.0)
-    }
+    private func applyZoom(_ target: CGFloat, anchor: NSPoint, mode: ZoomMode) {
+        guard image != nil, nativeSize.width > 0, nativeSize.height > 0 else { return }
+        let oldZoom = currentZoom
+        let newZoom = max(minZoom, min(maxZoom, target))
+        guard abs(newZoom - oldZoom) > 0.0001 || mode != zoomMode else { return }
 
-    private func zoom(to targetScale: CGFloat, anchor: NSPoint) {
-        guard image != nil else { return }
-        let oldScale = displayScale
-        let newScale = max(0.02, min(targetScale, 8.0))
-        guard abs(newScale - oldScale) > 0.0001 else { return }
-
-        let oldOrigin = origin(for: oldScale, pan: pan)
-        let imagePoint = CGPoint(x: (anchor.x - oldOrigin.x) / oldScale,
-                                 y: (anchor.y - oldOrigin.y) / oldScale)
-        let baseOrigin = CGPoint(x: (bounds.width - CGFloat(image!.width) * newScale) / 2,
-                                 y: (bounds.height - CGFloat(image!.height) * newScale) / 2)
-        var newPan = CGPoint(x: anchor.x - imagePoint.x * newScale - baseOrigin.x,
-                             y: anchor.y - imagePoint.y * newScale - baseOrigin.y)
-        newPan = clampedPan(newPan, scale: newScale)
-        manualScale = newScale
-        zoomMode = .manual
+        let oldOrigin = origin(for: oldZoom, pan: pan)
+        let imagePoint = CGPoint(x: (anchor.x - oldOrigin.x) / oldZoom,
+                                 y: (anchor.y - oldOrigin.y) / oldZoom)
+        let newSize = displaySize(for: newZoom)
+        let baseOrigin = CGPoint(x: (bounds.width - newSize.width) / 2,
+                                 y: (bounds.height - newSize.height) / 2)
+        var newPan = CGPoint(x: anchor.x - imagePoint.x * newZoom - baseOrigin.x,
+                             y: anchor.y - imagePoint.y * newZoom - baseOrigin.y)
+        newPan = clampedPan(newPan, zoom: newZoom)
+        zoom = newZoom
+        zoomMode = mode
         pan = newPan
         needsDisplay = true
         notifyZoom()
-        if newScale >= 0.9 && !fullRequested {
-            onZoomReachedFull?()
-        }
+        maybeRequestFull()
     }
 
     private func notifyZoom() {
-        onZoomChanged?(displayScale)
+        onZoomChanged?(currentZoom)
+    }
+
+    /// 放大超过阈值后请求全尺寸原图。预览缩放 ≥1.2 或显示尺寸 ≥95% 原图都触发。
+    private func maybeRequestFull() {
+        guard image != nil, nativeSize.width > 0, !fullRequested else { return }
+        let imageWidth = max(1, CGFloat(image!.width))
+        let previewScale = currentZoom * nativeSize.width / imageWidth
+        if currentZoom >= 0.95 || previewScale >= 1.2 {
+            fullRequested = true
+            onZoomReachedFull?()
+        }
     }
 
     // MARK: - 布局计算
 
-    private func origin(for scale: CGFloat, pan: CGPoint) -> CGPoint {
-        guard let image else { return .zero }
-        let width = CGFloat(image.width) * scale
-        let height = CGFloat(image.height) * scale
-        let clamped = clampedPan(pan, scale: scale)
-        return CGPoint(x: (bounds.width - width) / 2 + clamped.x,
-                       y: (bounds.height - height) / 2 + clamped.y)
+    private func origin(for zoom: CGFloat, pan: CGPoint) -> CGPoint {
+        let size = displaySize(for: zoom)
+        let clamped = clampedPan(pan, zoom: zoom)
+        return CGPoint(x: (bounds.width - size.width) / 2 + clamped.x,
+                       y: (bounds.height - size.height) / 2 + clamped.y)
     }
 
-    /// 图比窗口小时居中；图比窗口大时限制边缘不进入窗口内部
-    private func clampedPan(_ pan: CGPoint, scale: CGFloat) -> CGPoint {
-        guard let image else { return .zero }
-        let width = CGFloat(image.width) * scale
-        let height = CGFloat(image.height) * scale
+    private func clampedPan(_ pan: CGPoint, zoom: CGFloat) -> CGPoint {
+        let size = displaySize(for: zoom)
         var result = pan
-        if width <= bounds.width {
+        if size.width <= bounds.width {
             result.x = 0
         } else {
-            let limit = (width - bounds.width) / 2
+            let limit = (size.width - bounds.width) / 2
             result.x = max(-limit, min(limit, result.x))
         }
-        if height <= bounds.height {
+        if size.height <= bounds.height {
             result.y = 0
         } else {
-            let limit = (height - bounds.height) / 2
+            let limit = (size.height - bounds.height) / 2
             result.y = max(-limit, min(limit, result.y))
         }
         return result
@@ -222,7 +271,6 @@ final class ImageCanvasView: NSView {
         guard let context = NSGraphicsContext.current?.cgContext else { return }
         context.saveGState()
         defer { context.restoreGState() }
-        // 大图缩放到 100% 时可能远超视图范围，必须显式裁剪，避免覆盖顶栏
         context.clip(to: bounds)
         context.setFillColor(backgroundColor.cgColor)
         context.fill(bounds)
@@ -232,22 +280,19 @@ final class ImageCanvasView: NSView {
             return
         }
 
-        let scale = displayScale
-        let width = CGFloat(image.width) * scale
-        let height = CGFloat(image.height) * scale
-        let origin = origin(for: scale, pan: pan)
-        context.interpolationQuality = scale > 1.01 ? .none : .high
-        context.draw(image, in: CGRect(x: origin.x, y: origin.y, width: width, height: height))
-
+        let z = currentZoom
+        let size = displaySize(for: z)
+        let point = origin(for: z, pan: pan)
+        context.interpolationQuality = (z >= 1.0 || size.width > bounds.width) ? .none : .high
+        context.draw(image, in: CGRect(x: point.x, y: point.y, width: size.width, height: size.height))
         drawZoomBadge(in: context)
     }
 
     private func drawZoomBadge(in context: CGContext) {
         let text: String
         switch zoomMode {
-        case .fit: text = "适应窗口"
-        case .actual: text = "100%"
-        case .manual: text = "\(zoomPercentage)%"
+        case .fit: text = "适应窗口 · \(zoomPercentage)%"
+        default: text = "\(zoomPercentage)%"
         }
         let attributes: [NSAttributedString.Key: Any] = [
             .font: NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .medium),
@@ -282,16 +327,19 @@ final class ImageCanvasView: NSView {
 
     override func layout() {
         super.layout()
+        if zoomMode == .fit {
+            pan = .zero
+        } else {
+            pan = clampedPan(pan, zoom: currentZoom)
+        }
         needsDisplay = true
     }
 
     // MARK: - 鼠标 / 滚轮
 
     override func mouseDown(with event: NSEvent) {
-        // 连续双击时 clickCount 会累加为 3/4/5/6；每两次点击切换一次，
-        // 不要只认 clickCount == 2，否则第二组双击要等系统双击间隔过期才生效。
         if event.clickCount >= 2, event.clickCount % 2 == 0 {
-            toggleZoomMode()
+            toggleZoomMode(anchor: convert(event.locationInWindow, from: nil))
             return
         }
         let point = convert(event.locationInWindow, from: nil)
@@ -305,15 +353,15 @@ final class ImageCanvasView: NSView {
         guard image != nil, let start = mouseDownPoint else { return }
         let point = convert(event.locationInWindow, from: nil)
         if !isPanning {
-            // 超过 3px 才开始平移，避免吞掉单击/双击
             if hypot(point.x - start.x, point.y - start.y) < 3 { return }
             isPanning = true
             NSCursor.closedHand.push()
         }
         if let last = lastDragPoint {
-            pan.x += point.x - last.x
-            pan.y += point.y - last.y
-            pan = clampedPan(pan, scale: displayScale)
+            var newPan = pan
+            newPan.x += point.x - last.x
+            newPan.y += point.y - last.y
+            pan = clampedPan(newPan, zoom: currentZoom)
         }
         lastDragPoint = point
         needsDisplay = true
@@ -327,22 +375,12 @@ final class ImageCanvasView: NSView {
         NSCursor.openHand.set()
     }
 
-    /// 鼠标在画布上双击 / 触控板双指双击：在 100% 与适应窗口之间切换
-    private func toggleZoomMode() {
-        guard image != nil else { return }
-        if zoomMode == .fit {
-            zoomToActual()
-        } else {
-            zoomToFit()
-        }
-    }
-
     private func panBy(dx: CGFloat, dy: CGFloat) {
         guard image != nil else { return }
         var next = pan
         next.x += dx
         next.y += dy
-        next = clampedPan(next, scale: displayScale)
+        next = clampedPan(next, zoom: currentZoom)
         guard next != pan else { return }
         pan = next
         needsDisplay = true
@@ -358,22 +396,16 @@ final class ImageCanvasView: NSView {
         let anchor = convert(event.locationInWindow, from: nil)
 
         if flags.contains(.option) {
-            // Option + 滚轮：缩放。触控板的精确 Y 增量方向与画面相反，取反后
-            // 双指向上 → 放大，符合直觉；鼠标滚轮保持原方向。
             let delta = precise ? -dy : dy
             let factor = exp(delta * (precise ? 0.012 : 0.12))
-            zoom(to: displayScale * factor, anchor: anchor)
+            applyZoom(currentZoom * factor, anchor: anchor, mode: .manual)
             return
         }
         if flags.contains(.command) {
-            // Command + 滚轮：水平平移
             let amount = precise ? dy : dy * 28
             panBy(dx: amount, dy: 0)
             return
         }
-        // 无修饰键：触控板双指 / 鼠标滚轮平移。
-        // 触控板精确滚动的 Y 方向与视图 Y 轴相反：双指往右上滑时，
-        // dy 为负；这里取反使图片跟随手指往右上移动。X 轴保持正向。
         if precise {
             panBy(dx: dx, dy: -dy)
         } else {
@@ -383,17 +415,12 @@ final class ImageCanvasView: NSView {
 
     override func magnify(with event: NSEvent) {
         guard image != nil else { return }
-        let scale = displayScale * (1 + event.magnification)
-        zoom(to: scale, anchor: convert(event.locationInWindow, from: nil))
+        applyZoom(currentZoom * (1 + event.magnification),
+                  anchor: convert(event.locationInWindow, from: nil), mode: .manual)
     }
 
-    /// 触控板“智能缩放”（双指双击）
     override func smartMagnify(with event: NSEvent) {
-        toggleZoomMode()
-    }
-
-    override func keyDown(with event: NSEvent) {
-        super.keyDown(with: event)
+        toggleZoomMode(anchor: convert(event.locationInWindow, from: nil))
     }
 
     override func menu(for event: NSEvent) -> NSMenu? {
