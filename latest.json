@@ -1,5 +1,5 @@
 {
-  "tag": "v1.0.5",
-  "notes": "v1.0.5 首个支持自动更新的版本：启动时检查 GitHub Releases，有新版本弹窗提示并可一键下载安装；内置 Windows 资源管理器同源缩略图快路径；修复 Z8 100% 花屏；全量预热提速（2550 张 Z8 约 26 秒）；新增署名信息。",
-  "msi": "https://github.com/Jadis038/PhotoCull/releases/download/v1.0.5/PhotoCull-Setup-1.0.5.msi"
+    "tag":  "v1.0.8",
+    "notes":  "v1.0.8：Enter 放大到 100%、Z 适配窗口、0 清除星标、↑↓ 固定中心缩放、F11 全屏、S 保护锁定、数字标星、快捷键说明窗口；修复 Z8 100% 花屏；缩略图提速。",
+    "msi":  "https://github.com/Jadis038/PhotoCull/releases/download/v1.0.8/PhotoCull-Setup-1.0.8.msi"
 }

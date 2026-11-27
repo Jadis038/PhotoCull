@@ -10,7 +10,7 @@
     <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
     <!-- 统一版本号，MSI 里也引用它 -->
-    <Version>1.0.7</Version>
+    <Version>1.0.8</Version>
     <Company>影·筛 开源项目</Company>
     <Authors>Галин</Authors>
     <Product>影·筛</Product>

@@ -19,7 +19,7 @@
            InstallerVersion="500"
            Compressed="yes">
     <!--
-      ProductCode 固定到版本（1.0.7 = {7C4E9A21-...}）：
+      ProductCode 固定到版本（1.0.8 = {7C4E9A21-...}）：
       自动生成的 ProductCode 配合 msiexec /x <msi路径> 会在反复重打包/安装的机器上
       与实际注册的产品错位（MSI 组件按 GUID 引用计数，错位后卸载只减计数不删文件，
       2026-11-26 实测踩坑）。以后升版本时换一个新 ProductCode 并同步更新 installer/verify.ps1。

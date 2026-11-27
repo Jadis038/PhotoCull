@@ -811,11 +811,21 @@ public partial class MainWindow : Window
         if (source == null)
         {
             // 无输入源（离屏渲染）：按语义兜底
-            if (key == Key.Space) MarkOrUnmarkCurrent();
-            else if (key == Key.S) ToggleProtect();
-            else if (key == Key.Enter) ToggleFullscreen();
-            else if (key == Key.Up) ZoomStep(1.10);
-            else if (key == Key.Down) ZoomStep(1 / 1.10);
+            switch (key)
+            {
+                case Key.Space: MarkOrUnmarkCurrent(); break;
+                case Key.S: ToggleProtect(); break;
+                case Key.Enter: _ = GoToActualAsync(); break;
+                case Key.Z: ApplyFit(); break;
+                case Key.Up: ZoomStep(1.10); break;
+                case Key.Down: ZoomStep(1 / 1.10); break;
+                case Key.D0: case Key.NumPad0: SetStarsCurrent(0); break;
+                case Key.D1: SetStarsCurrent(1); break;
+                case Key.D2: SetStarsCurrent(2); break;
+                case Key.D3: SetStarsCurrent(3); break;
+                case Key.D4: SetStarsCurrent(4); break;
+                case Key.D5: SetStarsCurrent(5); break;
+            }
             return;
         }
         var args = new KeyEventArgs(Keyboard.PrimaryDevice, source, 0, key)
@@ -1010,8 +1020,17 @@ public partial class MainWindow : Window
                 if (!ctrl) { ToggleProtect(); e.Handled = true; }
                 break;
             case Key.Enter:
-                // Enter = 全屏切换（最大化到工作区，不覆盖任务栏），支持快速连按
-                ToggleFullscreen(); e.Handled = true;
+                // Enter = 放大到 100%（像素 1:1，后台全解），支持快速连按
+                _ = GoToActualAsync(); e.Handled = true;
+                break;
+            case Key.Z:
+                // Z（无 Ctrl）= 回到「适应窗口」大小；Ctrl+Z 仍是撤销
+                if (!ctrl) { ApplyFit(); _vm.StatusText = "已调整至适配窗口"; e.Handled = true; }
+                break;
+            case Key.D0:
+            case Key.NumPad0:
+                // 0 = 清除当前图星标（不标星）
+                SetStarsCurrent(0); e.Handled = true;
                 break;
             case Key.D1: case Key.D2: case Key.D3: case Key.D4: case Key.D5:
                 SetStarsCurrent(e.Key - Key.D1 + 1); e.Handled = true;
@@ -1021,16 +1040,18 @@ public partial class MainWindow : Window
                 SetStarsCurrent(e.Key - Key.NumPad1 + 1); e.Handled = true;
                 break;
             case Key.Up:
-                // 方向键上：大图放大（约 10%）
+                // 方向键上：以画面中心为锚放大（约 10%）
                 ZoomStep(1.10); e.Handled = true;
                 break;
             case Key.Down:
-                // 方向键下：大图缩小（约 10%）
+                // 方向键下：以画面中心为锚缩小（约 10%）
                 ZoomStep(1 / 1.10); e.Handled = true;
                 break;
-            case Key.Z:
-                if (ctrl) { OnUndo(this, new RoutedEventArgs()); e.Handled = true; }
+            case Key.F11:
+                // F11 = 全屏切换（最大化到工作区，不覆盖任务栏），支持快速连按
+                ToggleFullscreen(); e.Handled = true;
                 break;
+
             case Key.O:
                 if (ctrl) { OnOpenFolder(this, new RoutedEventArgs()); e.Handled = true; }
                 break;
@@ -1051,10 +1072,6 @@ public partial class MainWindow : Window
                 if (Session.Items.Count > 0) SetCurrent(Session.Items[^1]);
                 e.Handled = true;
                 break;
-            case Key.D0:
-            case Key.NumPad0:
-                ApplyFit(); e.Handled = true;
-                break;
             case Key.OemPlus:
             case Key.Add:
                 ZoomAt(new Point(ImageArea.ActualWidth / 2, ImageArea.ActualHeight / 2), 1.25); e.Handled = true;
@@ -1066,12 +1083,23 @@ public partial class MainWindow : Window
         }
     }
 
-    /// <summary>键盘 ↑/↓：以画面中心为锚缩放约 10%；缩放到 95% 以上时后台换原图细节（不改变当前缩放）。</summary>
+    /// <summary>键盘 ↑/↓：以画面中心为固定锚点缩放约 10%；缩放到 95% 以上时后台换原图细节（不改变当前缩放）。</summary>
     private void ZoomStep(double factor)
     {
         if (_vm.LargeImage == null) return;
         ZoomAt(new Point(ImageArea.ActualWidth / 2, ImageArea.ActualHeight / 2), factor);
         if (_viewScale >= 0.95) _ = EnsureFullResAsync(applyActual: false);
+    }
+
+    /// <summary>切到 100%：后台全解原图后像素 1:1 显示，支持快速连按（第二次起直接就位）。</summary>
+    private async Task GoToActualAsync()
+    {
+        var item = _vm.Current;
+        if (item == null || _vm.LargeImage == null) return;
+        if (_vm.FullImage != null && _fullResFor == item.FullPath) { ApplyActual(); return; }
+        await EnsureFullResAsync(applyActual: false);
+        if (_fullResFor == item.FullPath && _vm.LargeImage != null) ApplyActual();
+        else ApplyFit();   // 全解失败退回适应窗口
     }
 
     /// <summary>Enter：窗口最大化（不覆盖任务栏）↔ 还原，可快速连按。</summary>

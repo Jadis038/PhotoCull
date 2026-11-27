@@ -355,14 +355,35 @@ public static class AppController
                     lines.Add($"↓ 缩小：{s1:F3}→{s2:F3}（{(down ? "通过" : "失败")}）");
                     if (!down) exitCode = 1;
 
-                    // ——— 2) Enter 全屏切换（快速连按）———
-                    win.PressKeyForTest(Key.Enter); await Task.Delay(250);
-                    bool maxed = win.WindowState == WindowState.Maximized;
-                    win.PressKeyForTest(Key.Enter); await Task.Delay(250);
-                    bool restored = win.WindowState == WindowState.Normal;
-                    lines.Add($"Enter 全屏：最大化={maxed} → 还原={restored}");
-                    if (!(maxed && restored)) exitCode = 1;
-                    win.ResetFit(); await Task.Delay(150);
+                    // ——— 2) Enter = 放大到 100%（像素 1:1，支持快速连按）———
+                    win.PressKeyForTest(Key.Enter);
+                    for (int i = 0; i < 240 && win.ZoomState.Text != "100%"; i++) await Task.Delay(50);
+                    var z1 = win.ZoomState;
+                    bool toActual = z1.Text == "100%" && Math.Abs(z1.Scale - 1.0) < 0.001 && _vm.FullImage != null;
+                    lines.Add($"Enter 100%：{toActual}（{z1.Text}，scale={z1.Scale:F3}，原图 {_vm.FullImage?.PixelWidth ?? 0}×{_vm.FullImage?.PixelHeight ?? 0}）");
+                    if (!toActual) exitCode = 1;
+
+                    // 快速连按第二次：应直接就位（不再解码）
+                    var swEnter = System.Diagnostics.Stopwatch.StartNew();
+                    win.PressKeyForTest(Key.Enter); await Task.Delay(150);
+                    swEnter.Stop();
+                    lines.Add($"Enter 快速连按：仍为 100%={win.ZoomState.Text == "100%"}（{swEnter.ElapsedMilliseconds} ms）");
+                    if (win.ZoomState.Text != "100%") exitCode = 1;
+
+                    // ——— 3) Z = 回到「适配窗口」———
+                    win.PressKeyForTest(Key.Z); await Task.Delay(250);
+                    var z2 = win.ZoomState;
+                    bool toFit = z2.Text == "适应窗口" && z2.Scale < 1.0;
+                    lines.Add($"Z 适配窗口：{toFit}（{z2.Text}，scale={z2.Scale:F3}）");
+                    if (!toFit) exitCode = 1;
+
+                    // ——— 4) F11 = 全屏切换（不覆盖任务栏）———
+                    win.PressKeyForTest(Key.F11); await Task.Delay(250);
+                    bool f11 = win.WindowState == WindowState.Maximized;
+                    win.PressKeyForTest(Key.F11); await Task.Delay(250);
+                    bool f11back = win.WindowState == WindowState.Normal;
+                    lines.Add($"F11 全屏：最大化={f11} → 还原={f11back}");
+                    if (!(f11 && f11back)) exitCode = 1;
 
                     // ——— 3) S 保护（锁定）：标记后按 S，空格取消应被拒绝 ———
                     var pCur = _vm.Current!;
@@ -382,15 +403,18 @@ public static class AppController
                     lines.Add($"S 解锁后可取消：{canUnmark}");
                     if (!canUnmark) exitCode = 1;
 
-                    // ——— 4) 数字标星（主键盘 + 小键盘，同键清除）———
+                    // ——— 4) 数字标星（主键盘 + 小键盘，同键清除；0 = 无星标）———
                     win.PressKeyForTest(Key.D3); await Task.Delay(200);
                     bool st3 = pCur.Stars == 3;
                     win.PressKeyForTest(Key.NumPad5); await Task.Delay(200);
                     bool st5 = pCur.Stars == 5;
                     win.PressKeyForTest(Key.NumPad5); await Task.Delay(200);
-                    bool cleared = pCur.Stars == 0;
-                    lines.Add($"标星：3星={st3}，小键盘5星={st5}，同键清除={cleared}");
-                    if (!(st3 && st5 && cleared)) exitCode = 1;
+                    bool cleared5 = pCur.Stars == 0;
+                    win.PressKeyForTest(Key.D4); await Task.Delay(200);
+                    win.PressKeyForTest(Key.NumPad0); await Task.Delay(200);
+                    bool cleared0 = pCur.Stars == 0;
+                    lines.Add($"标星：3星={st3}，小键盘5星={st5}，同键清除={cleared5}，4星后按0清除={cleared0}");
+                    if (!(st3 && st5 && cleared5 && cleared0)) exitCode = 1;
 
                     // ——— 5) 色彩空间 ———
                     // 按用户要求：文件没有色彩空间标签时不猜、显示"—"，不算失败

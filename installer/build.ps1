@@ -7,8 +7,8 @@ $Repo    = if ($global:REPO) { $global:REPO } else { (Resolve-Path (Join-Path $P
 $Dist    = Join-Path $Repo 'dist\app'
 $OutDir  = Join-Path $Repo 'dist'
 $WixExe  = 'D:\DSH工作区\toolchain\wix\wix.exe'
-if (-not $Version) { $Version = '1.0.7' }
-if (-not $PkgCode) { $PkgCode = '{A31F9E42-7B05-4C48-9D6E-3F2A0B8C5D71}' }
+if (-not $Version) { $Version = '1.0.8' }
+if (-not $PkgCode) { $PkgCode = '{BE04C263-83A1-4D57-92E4-6C8F1A5B3D09}' }
 
 Write-Host "== [1/5] 自包含发布 (net8.0-windows, win-x64) ==" -ForegroundColor Cyan
 if (Test-Path $Dist) { Remove-Item $Dist -Recurse -Force }
