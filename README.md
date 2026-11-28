@@ -1,7 +1,7 @@
 # 影·筛 / PhotoCull
 
 > **Windows + macOS 双平台，为“一次拍几千张、只想赶紧挑出能用的”而生。**
-> 打开文件夹，看一眼，按空格；满意的照片自动复制进「筛选」文件夹。原文件永远不动。
+> 打开文件夹，看一眼，按空格；满意的照片自动复制进「筛选」文件夹。原文件永远不动。或许它不如Adobe Br功能全面，但是它也许更轻、更快、更容易入门与上手。
 
 [![Windows](https://img.shields.io/badge/Windows-v1.0.8-0078D4?logo=windows)](https://github.com/Jadis038/PhotoCull/releases/tag/v1.0.8)
 [![macOS](https://img.shields.io/badge/macOS-1.0.3-000000?logo=apple)](https://github.com/Jadis038/PhotoCull/releases/tag/macos-v1.0.3)
